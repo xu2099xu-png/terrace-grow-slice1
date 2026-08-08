@@ -1,5 +1,6 @@
 import { Controller, Post, Body, UseGuards } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { GovernanceService } from '../governance.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { buildPerennialPlan, PlanInput } from '../engines/recommend-engine/plan';
@@ -8,16 +9,13 @@ import type { PollinationCompatRow, PollinationProfileInput, VarietyInput } from
 import type { WaterRiskConfigRow } from '../engines/recommend-engine/water-risk';
 import type { SoilEngineInput } from '../engines/soil-engine';
 
-/** Runtime gate for draft fixture data (v1.4 §3.2 governance). */
-function draftFilter(): any {
-  const allowDraft = process.env.ALLOW_DRAFT_FIXTURES === 'true';
-  return allowDraft ? {} : { reviewStatus: 'approved' };
-}
-
 @Controller('recommendations')
 @UseGuards(AuthGuard)
 export class RecommendationController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly governance: GovernanceService,
+  ) {}
 
   @Post('perennial')
   async perennial(
@@ -29,6 +27,7 @@ export class RecommendationController {
     },
   ) {
     const cropId = body.crop_id;
+    const reviewFilter = this.governance.reviewStatusFilter();
 
     const profile = await this.prisma.terraceProfile.findFirst({ where: { userId } });
     if (!profile) return { error: 'No terrace profile' };
@@ -37,49 +36,53 @@ export class RecommendationController {
     const zone = zones.find((z) => (z.cityCodes as string[]).includes(profile.cityCode)) || null;
 
     const crop = await this.prisma.crop.findUnique({
-      where: { id: cropId, ...draftFilter() },
+      where: { id: cropId, ...reviewFilter },
     });
     if (!crop) return { error: 'Crop not found' };
 
     const envReq = await this.prisma.environmentRequirement.findFirst({
-      where: { ownerId: cropId, ownerType: 'crop', ...draftFilter() },
+      where: { ownerId: cropId, ownerType: 'crop', ...reviewFilter },
     });
 
     const varieties = await this.prisma.variety.findMany({
-      where: { cropId, ...draftFilter() },
+      where: { cropId, ...reviewFilter },
       include: { traits: { include: { attribute: true } } },
     });
 
     const profiles = await this.prisma.pollinationProfile.findMany({
-      where: { varietyId: { in: varieties.map((v) => v.id) }, ...draftFilter() },
+      where: { varietyId: { in: varieties.map((v) => v.id) }, ...reviewFilter },
     });
 
     const compat = await this.prisma.pollinationCompatibility.findMany({
-      where: { varietyId: { in: varieties.map((v) => v.id) }, ...draftFilter() },
+      where: { varietyId: { in: varieties.map((v) => v.id) }, ...reviewFilter },
     });
 
     const containerReqs = await this.prisma.containerRequirement.findMany({
-      where: { cropId, ...draftFilter() },
+      where: { cropId, ...reviewFilter },
     });
 
     const containerTypes = await this.prisma.containerType.findMany({
-      where: draftFilter(),
+      where: reviewFilter,
     });
 
     const materials = await this.prisma.substrateMaterial.findMany({
-      where: draftFilter(),
+      where: reviewFilter,
     });
 
     const rules = await this.prisma.materialCropRule.findMany({
-      where: { cropId, ...draftFilter() },
+      where: { cropId, ...reviewFilter },
     });
 
     const substitutions = await this.prisma.materialSubstitution.findMany({
-      where: draftFilter(),
+      where: reviewFilter,
     });
 
     const template = await this.prisma.soilRecipeTemplate.findFirst({
-      where: { cropId, ...draftFilter() },
+      where: { cropId, isFallback: false, ...reviewFilter },
+    });
+
+    const fallbackTemplate = await this.prisma.soilRecipeTemplate.findFirst({
+      where: { cropId, isFallback: true, ...reviewFilter },
     });
 
     const slots = template
@@ -88,16 +91,20 @@ export class RecommendationController {
         })
       : [];
 
-    const waterRiskConfig = await this.prisma.waterRiskConfig.findMany({
-      where: draftFilter(),
-    });
+    const fallbackSlots = fallbackTemplate
+      ? await this.prisma.soilRecipeSlot.findMany({
+          where: { templateId: fallbackTemplate.id },
+        })
+      : [];
+
+    const waterRiskConfig = await this.prisma.waterRiskConfig.findMany();
 
     const inventory = await this.prisma.userMaterialInventory.findMany({
       where: { userId },
     });
 
     const modifiers = await this.prisma.containerModifier.findMany({
-      where: draftFilter(),
+      where: reviewFilter,
     });
 
     // ---- build PlanInput ----
@@ -204,8 +211,20 @@ export class RecommendationController {
       targets: (template?.targetProperties as any) || { drainage: [3, 4.2], aeration: [2.8, 4], retention: [2.2, 3.2] },
       volumeL: template?.baseVolumeL ?? 30,
       requiresAcidification: crop.requiresAcidification,
-      phManagementNote: crop.startMethodNote, // crop-aware pH note (v1.4: no calculated pH)
+      phManagementNote: this.getPhManagementNote(crop),
       forbiddenPairs: [],
+      fallbackTemplate: fallbackTemplate && fallbackSlots.length > 0
+        ? {
+            slots: fallbackSlots.map((s) => ({
+              functionGroup: s.functionGroup as any,
+              minPct: s.minPct,
+              maxPct: s.maxPct,
+              preferredMaterials: (s.preferredMaterials as string[]) || [],
+              required: s.required,
+            })),
+            targets: (fallbackTemplate.targetProperties as any) || { drainage: [2.5, 4.5], aeration: [2.5, 4.5], retention: [2.0, 3.5] },
+          }
+        : undefined,
     };
 
     const waterRiskConfigRows: WaterRiskConfigRow[] = waterRiskConfig.map((r) => ({
@@ -233,11 +252,17 @@ export class RecommendationController {
         sunConfidence: profile.sunConfidence,
         rainExposed: profile.rainExposed,
       },
-      climateZone: {
-        name: zone?.name || '未知气候区',
-        chillHoursEstimate: zone?.chillHoursEstimate || 700,
-        heatLevel: zone?.heatLevel || 3,
-      },
+      climateZone: zone
+        ? {
+            name: zone.name,
+            chillHoursEstimate: zone.chillHoursEstimate,
+            heatLevel: zone.heatLevel,
+          }
+        : {
+            name: '未知气候区',
+            chillHoursEstimate: 0,
+            heatLevel: 0,
+          },
       varieties: varietyInputs,
       pollinationProfiles,
       pollinationCompat,
@@ -251,5 +276,19 @@ export class RecommendationController {
 
     const planCard = buildPerennialPlan(planInput);
     return planCard;
+  }
+
+  /** Get crop-aware pH management note (not from startMethodNote). */
+  private getPhManagementNote(crop: any): string | null {
+    if (!crop.requiresAcidification) return null;
+    // Use acidityNeed to generate appropriate pH management note
+    switch (crop.acidityNeed) {
+      case 'acid_required':
+        return '该作物喜酸性土壤，建议定期检测 pH 并适时调酸';
+      case 'slightly_acid':
+        return '该作物偏好微酸性土壤，注意避免土壤碱化';
+      default:
+        return null;
+    }
   }
 }

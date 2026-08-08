@@ -28,6 +28,11 @@ export interface RankedVariety {
   name: string;
   score: number;
   reasons: string[];
+  traits?: {
+    chill_hours_min?: number;
+    heat_tolerance?: number;
+    shade_tolerance?: number;
+  };
 }
 
 /**
@@ -42,6 +47,18 @@ export function rankVarieties(
   if (sunlight.weight === 0) {
     return []; // hard filter: NO_MATCH yields zero varieties
   }
+
+  // Unknown climate zone (chillHoursEstimate=0 or heatLevel=0): cannot reliably rank
+  const unknownClimate = zone.chillHoursEstimate === 0 || zone.heatLevel === 0;
+  if (unknownClimate) {
+    return varieties.map((v) => ({
+      varietyId: v.id,
+      name: v.name,
+      score: 0,
+      reasons: ['气候区未知，无法可靠评估品种适配性'],
+    }));
+  }
+
   const ranked = varieties.map((v) => {
     let score = 100;
     const reasons: string[] = [];
@@ -88,7 +105,13 @@ export function rankVarieties(
     }
 
     score = Math.round(score * sunlight.weight * 10) / 10;
-    return { varietyId: v.id, name: v.name, score, reasons };
+    return {
+      varietyId: v.id,
+      name: v.name,
+      score,
+      reasons,
+      traits: v.traits,
+    };
   });
 
   ranked.sort((x, y) => y.score - x.score || x.varietyId.localeCompare(y.varietyId));

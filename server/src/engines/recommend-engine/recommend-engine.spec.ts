@@ -131,6 +131,40 @@ describe('recommend-engine / 授粉', () => {
     expect(r.recommended_partners.map((p: any) => p.name)).toEqual(['薄雾']);
     expect(r.note).toContain('两株');
   });
+
+  it('sexCompatible: male/female incompatible with same sex', () => {
+    const varietiesWithSex = [
+      { id: 'male1', name: '雄株1', bloomGroup: 'group_a', sexType: 'male' },
+      { id: 'male2', name: '雄株2', bloomGroup: 'group_a', sexType: 'male' },
+      { id: 'female1', name: '雌株1', bloomGroup: 'group_a', sexType: 'female' },
+    ];
+    // male variety needs cross-pollination: should only recommend female, not another male
+    const r = resolvePollination(
+      { varietyId: 'male1', sexType: 'male', selfFertility: 'self_sterile', crossRequired: true, bloomGroup: 'group_a', notes: null },
+      [],
+      varietiesWithSex,
+    );
+    expect(r.need_two).toBe(true);
+    expect(r.recommended_partners.map((p: any) => p.name)).toEqual(['雌株1']);
+    expect(r.recommended_partners.map((p: any) => p.name)).not.toContain('雄株2');
+  });
+
+  it('sexCompatible: hermaphrodite is compatible with any sex', () => {
+    const varietiesWithSex = [
+      { id: 'herm1', name: '两性1', bloomGroup: 'group_a', sexType: 'hermaphrodite' },
+      { id: 'male1', name: '雄株1', bloomGroup: 'group_a', sexType: 'male' },
+      { id: 'female1', name: '雌株1', bloomGroup: 'group_a', sexType: 'female' },
+    ];
+    const r = resolvePollination(
+      { varietyId: 'herm1', sexType: 'hermaphrodite', selfFertility: 'partially_self_fertile', crossRequired: false, bloomGroup: 'group_a', notes: null },
+      [],
+      varietiesWithSex,
+    );
+    // hermaphrodite can pair with both male and female
+    expect(r.recommended_partners.length).toBe(2);
+    expect(r.recommended_partners.map((p: any) => p.name)).toContain('雄株1');
+    expect(r.recommended_partners.map((p: any) => p.name)).toContain('雌株1');
+  });
 });
 
 describe('recommend-engine / 容器推荐', () => {

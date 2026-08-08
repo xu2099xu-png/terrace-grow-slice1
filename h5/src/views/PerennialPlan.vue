@@ -33,7 +33,12 @@
             {{ v.name }} <van-tag v-if="v.varietyId === plan.selected_variety_id" type="primary">已选</van-tag>
           </template>
           <template #label>
-            需冷量: {{ v.chill_hours_min }}h · 耐热: {{ v.heat_tolerance }} · 耐阴: {{ v.shade_tolerance }}
+            <div v-if="v.traits">
+              需冷量: {{ v.traits.chill_hours_min ?? '—' }}h · 耐热: {{ v.traits.heat_tolerance ?? '—' }} · 耐阴: {{ v.traits.shade_tolerance ?? '—' }}
+            </div>
+            <div v-if="v.reasons.length" class="reasons">
+              <p v-for="r in v.reasons" :key="r" class="reason">· {{ r }}</p>
+            </div>
           </template>
         </van-cell>
       </van-cell-group>
@@ -54,6 +59,14 @@
         <van-cell title="首选类型" :value="containerLabel" />
         <van-cell title="建议容积" :value="containerVolume" />
         <van-cell title="换盆周期" :value="plan.container?.repotNote || '—'" />
+        <van-cell v-if="plan.container" title="切换容器">
+          <template #label>
+            <van-radio-group v-model="selectedContainerId" direction="horizontal" @change="onContainerChange">
+              <van-radio v-for="t in plan.container.preferredTypes" :key="t.id" :name="t.id">{{ t.name }}</van-radio>
+              <van-radio v-for="t in plan.container.acceptableTypes" :key="t.id" :name="t.id">{{ t.name }}</van-radio>
+            </van-radio-group>
+          </template>
+        </van-cell>
       </van-cell-group>
 
       <!-- 配土 -->
@@ -63,8 +76,8 @@
             <strong>{{ plan.soil_mix.feasibility }}</strong>
           </template>
           <template #label>
-            <p v-if="plan.soil_mix.mix.length">配比：</p>
-            <p v-for="m in plan.soil_mix.mix" :key="m.material">{{ m.material }} {{ m.pct }}%</p>
+            <p v-if="plan.soil_mix.mix.length">配比（{{ plan.soil_mix.mix[0]?.liters ? '约' : '' }}{{ totalLiters }}L）：</p>
+            <p v-for="m in plan.soil_mix.mix" :key="m.material">{{ m.material }} {{ m.pct }}%（{{ m.liters }}L）</p>
             <p v-if="plan.soil_mix.substitutions_applied.length" class="sub">替代：{{ plan.soil_mix.substitutions_applied.map(s => `${s.from}→${s.to}`).join('、') }}</p>
             <p v-if="plan.soil_mix.need_acidification">需要额外调酸</p>
             <p v-if="plan.soil_mix.ph_management_note" class="sub">{{ plan.soil_mix.ph_management_note }}</p>
@@ -72,7 +85,7 @@
         </van-cell>
         <van-cell v-if="plan.missing_materials.length" title="还缺材料">
           <template #label>
-            <span v-for="m in plan.missing_materials" :key="m.material" class="missing">{{ m.material }} </span>
+            <span v-for="m in plan.missing_materials" :key="m.material" class="missing">{{ m.material }}（{{ m.liters }}L）</span>
           </template>
         </van-cell>
       </van-cell-group>
@@ -129,15 +142,100 @@ import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import api from '../api/client';
 
+interface RankedVariety {
+  varietyId: string;
+  name: string;
+  score: number;
+  reasons: string[];
+  traits?: {
+    chill_hours_min?: number;
+    heat_tolerance?: number;
+    shade_tolerance?: number;
+  };
+}
+
+interface ContainerType {
+  id: string;
+  name: string;
+  drainage: number;
+  aeration: number;
+  waterRetention: number;
+}
+
+interface ContainerRecommendation {
+  volumeRange: [number, number];
+  minVolumeL: number;
+  minDepthCm: number | null;
+  preferredTypes: ContainerType[];
+  acceptableTypes: ContainerType[];
+  avoidTypes: ContainerType[];
+  supportRequired: boolean;
+  repotNote: string | null;
+  reason: string | null;
+  selected_type_id: string | null;
+}
+
+interface MixLine {
+  materialId: string;
+  material: string;
+  pct: number;
+  liters: number;
+  source: 'user_owned' | 'to_purchase';
+}
+
+interface SoilResult {
+  mix: MixLine[];
+  missing: { materialId: string; material: string; liters: number; reason: string }[];
+  substitutions_applied: { from: string; to: string; scope: string; note?: string }[];
+  need_acidification: boolean;
+  ph_management_note: string | null;
+  feasibility: 'optimal' | 'substituted' | 'relaxed' | 'fallback' | 'unavailable';
+  water_retention_score: number;
+  drainage_score: number;
+  aeration_score: number;
+  reasons: string[];
+}
+
+interface WaterRiskResult {
+  level: 'low' | 'mid' | 'high';
+  mitigation: string[];
+}
+
+interface PlanCard {
+  suitability: 'suitable' | 'borderline' | 'likely_unsuitable' | 'unsuitable';
+  sunlight_status: {
+    status: string;
+    weight: number;
+    message: string | null;
+    hours_range: [number, number];
+    confidence: string;
+  };
+  recommended_varieties: RankedVariety[];
+  selected_variety_id: string | null;
+  pollination: {
+    need_two: boolean;
+    recommended_partners: { id: string; name: string }[];
+    note: string | null;
+  };
+  container: ContainerRecommendation | null;
+  soil_mix: SoilResult | null;
+  missing_materials: SoilResult['missing'];
+  water_risk: WaterRiskResult | null;
+  warnings: string[];
+  next_action: string;
+  reasons: string[];
+}
+
 const router = useRouter();
 const props = defineProps<{ cropId: string }>();
 
 const loading = ref(false);
-const plan = ref<any>(null);
+const plan = ref<PlanCard | null>(null);
 const error = ref(false);
 const showMaterials = ref(false);
 const materials = ref<any[]>([]);
 const selectedMaterials = ref<string[]>([]);
+const selectedContainerId = ref<string>('');
 
 const suitabilityLabel = computed(() => {
   const map: Record<string, string> = {
@@ -146,7 +244,7 @@ const suitabilityLabel = computed(() => {
     likely_unsuitable: '可能不适合，建议确认日照',
     unsuitable: '日照不足，不建议',
   };
-  return map[plan.value?.suitability] || '—';
+  return map[plan.value?.suitability ?? ''] || '—';
 });
 
 const suitabilityClass = computed(() => {
@@ -159,7 +257,7 @@ const suitabilityClass = computed(() => {
 const containerLabel = computed(() => {
   const c = plan.value?.container;
   if (!c) return '—';
-  const names = c.preferredTypes?.map((t: any) => t.name).join('、') || '';
+  const names = c.preferredTypes?.map((t) => t.name).join('、') || '';
   return names || '—';
 });
 
@@ -171,12 +269,18 @@ const containerVolume = computed(() => {
   return max ? `${min}–${max}L` : `≥${min}L`;
 });
 
+const totalLiters = computed(() => {
+  if (!plan.value?.soil_mix?.mix.length) return 0;
+  return Math.round(plan.value.soil_mix.mix.reduce((s, m) => s + m.liters, 0) * 10) / 10;
+});
+
 async function load() {
   loading.value = true;
   error.value = false;
   try {
     const res = await api.post('/recommendations/perennial', { crop_id: props.cropId });
     plan.value = res.data;
+    selectedContainerId.value = res.data.container?.selected_type_id || '';
 
     // fetch materials for dialog
     const matRes = await api.get('/materials');
@@ -190,6 +294,20 @@ async function load() {
   }
 }
 
+async function onContainerChange() {
+  if (!plan.value || !selectedContainerId.value) return;
+  try {
+    const res = await api.post('/recommendations/perennial', {
+      crop_id: props.cropId,
+      selected_container_type_id: selectedContainerId.value,
+    });
+    plan.value = res.data;
+    showToast('已更新容器方案');
+  } catch (e) {
+    showToast('更新失败');
+  }
+}
+
 async function recalculateSoil() {
   try {
     await api.put('/users/me/materials', { material_ids: selectedMaterials.value });
@@ -198,9 +316,11 @@ async function recalculateSoil() {
       container_type_id: plan.value?.container?.selected_type_id,
       material_ids: selectedMaterials.value,
     });
-    plan.value.soil_mix = res.data.soil;
-    plan.value.missing_materials = res.data.soil?.missing || [];
-    plan.value.water_risk = res.data.water_risk;
+    if (plan.value) {
+      plan.value.soil_mix = res.data.soil;
+      plan.value.missing_materials = res.data.soil?.missing || [];
+      plan.value.water_risk = res.data.water_risk;
+    }
     showToast('已更新配土方案');
   } catch (e: any) {
     showToast('更新失败');
@@ -228,6 +348,8 @@ onMounted(load);
 .warning { color: #ee0a24; margin: 4px 0; }
 .missing { color: #ee0a24; margin-right: 8px; }
 .sub { color: #ff976a; margin-top: 4px; }
+.reasons { margin-top: 4px; }
+.reason { color: #666; font-size: 12px; margin: 2px 0; }
 .actions {
   padding: 16px;
 }

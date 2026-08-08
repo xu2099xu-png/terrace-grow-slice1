@@ -420,11 +420,12 @@ async function main() {
     ],
   });
 
-  // ---------- soil recipe template (blueberry) ----------
+  // ---------- soil recipe templates (blueberry) ----------
+  // Main template: strict targets for optimal solve
   const template = await prisma.soilRecipeTemplate.create({
     data: {
       id: 'soil-tpl-blueberry', cropId: crop.id, varietyId: null,
-      baseVolumeL: 30, isFallback: true,
+      baseVolumeL: 30, isFallback: false,
       // disclosed addition: H3-H5 target intervals as data
       targetProperties: { drainage: [3.0, 4.2], aeration: [2.8, 4.0], retention: [2.2, 3.2] },
       ...GOV,
@@ -450,6 +451,40 @@ async function main() {
       {
         templateId: template.id, functionGroup: 'retention',
         minPct: 0, maxPct: 15, required: false,
+        preferredMaterials: [vermiculite.id],
+      },
+    ],
+  });
+
+  // Fallback template: reviewed reference recipe with wider but still valid targets
+  const fallbackTpl = await prisma.soilRecipeTemplate.create({
+    data: {
+      id: 'soil-tpl-blueberry-fallback', cropId: crop.id, varietyId: null,
+      baseVolumeL: 30, isFallback: true,
+      targetProperties: { drainage: [2.5, 4.5], aeration: [2.5, 4.5], retention: [2.0, 3.5] },
+      ...GOV,
+    },
+  });
+  await prisma.soilRecipeSlot.createMany({
+    data: [
+      {
+        templateId: fallbackTpl.id, functionGroup: 'base',
+        minPct: 35, maxPct: 65, required: true,
+        preferredMaterials: [peat.id, coco.id],
+      },
+      {
+        templateId: fallbackTpl.id, functionGroup: 'drainage',
+        minPct: 15, maxPct: 40, required: true,
+        preferredMaterials: [perlite.id],
+      },
+      {
+        templateId: fallbackTpl.id, functionGroup: 'organic',
+        minPct: 5, maxPct: 30, required: true,
+        preferredMaterials: [pineBark.id, pineSoil.id],
+      },
+      {
+        templateId: fallbackTpl.id, functionGroup: 'retention',
+        minPct: 0, maxPct: 20, required: false,
         preferredMaterials: [vermiculite.id],
       },
     ],

@@ -84,6 +84,11 @@ export interface SoilEngineInput {
   phManagementNote?: string | null; // crop-aware note, never a calculated pH value
   forbiddenPairs?: [string, string][];
   config?: Partial<EngineConfig>;
+  /** L3 fallback: reviewed template with its own slot bounds and targets. */
+  fallbackTemplate?: {
+    slots: EngineSlot[];
+    targets: PropertyTargets;
+  };
 }
 
 export interface MixLine {

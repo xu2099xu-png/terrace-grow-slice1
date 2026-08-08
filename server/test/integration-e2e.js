@@ -1,4 +1,5 @@
-// DEV_FIXTURE data requires ALLOW_DRAFT_FIXTURES=true
+// DEV_FIXTURE data requires APP_ENV=development AND ALLOW_DRAFT_FIXTURES=true
+process.env.APP_ENV = 'development';
 process.env.ALLOW_DRAFT_FIXTURES = 'true';
 
 const { Test } = require('@nestjs/testing');

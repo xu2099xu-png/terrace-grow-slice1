@@ -81,17 +81,31 @@
             </van-radio-group>
           </template>
         </van-cell>
-        <van-cell title="露台是否淋雨？">
-          <template #label>
-            <van-radio-group v-model="rainExposed" direction="horizontal">
-              <van-radio :name="true">会淋到雨</van-radio>
-              <van-radio :name="false">基本淋不到</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
       </van-cell-group>
       <div class="actions">
-        <van-button type="primary" block round @click="submit" :disabled="!orientation || !timeObs || rainExposed === null">完成</van-button>
+        <van-button type="primary" block round @click="nextStep" :disabled="!orientation || !timeObs">下一步</van-button>
+      </div>
+    </div>
+
+    <div v-if="step === 4" class="step">
+      <h2>露台是否淋雨？</h2>
+      <p class="hint">直接影响积水风险评估，请如实选择</p>
+      <van-radio-group v-model="rainExposed">
+        <van-cell-group inset>
+          <van-cell title="会淋到雨" clickable @click="rainExposed = true">
+            <template #right-icon>
+              <van-radio :name="true" />
+            </template>
+          </van-cell>
+          <van-cell title="基本淋不到" clickable @click="rainExposed = false">
+            <template #right-icon>
+              <van-radio :name="false" />
+            </template>
+          </van-cell>
+        </van-cell-group>
+      </van-radio-group>
+      <div class="actions">
+        <van-button type="primary" block round @click="submit" :disabled="rainExposed === null">完成</van-button>
       </div>
     </div>
 
@@ -127,9 +141,9 @@ function goBack() {
 
 function nextStep() {
   if (step.value === 2 && sunExposureLevel.value === 'UNSURE') {
-    step.value = 3;
-  } else {
-    submit();
+    step.value = 3; // auxiliary questions for unsure sunlight
+  } else if (step.value === 2 || step.value === 3) {
+    step.value = 4; // rain exposure is mandatory for all paths
   }
 }
 

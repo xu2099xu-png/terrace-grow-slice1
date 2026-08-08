@@ -1,15 +1,22 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { GovernanceService } from '../governance.service';
 import { Public } from '../auth/public.decorator';
 
 @Controller('crops')
 export class CatalogController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly governance: GovernanceService,
+  ) {}
 
   @Public()
   @Get()
   async list(@Query('life_type') lifeType?: string) {
-    const where = lifeType ? { lifeType } : {};
+    const where = {
+      ...(lifeType ? { lifeType } : {}),
+      ...this.governance.reviewStatusFilter(),
+    };
     return this.prisma.crop.findMany({ where, include: { environmentRequirement: true } });
   }
 
@@ -17,7 +24,7 @@ export class CatalogController {
   @Get(':id/varieties')
   async varieties(@Param('id') cropId: string) {
     const rows = await this.prisma.variety.findMany({
-      where: { cropId },
+      where: { cropId, ...this.governance.reviewStatusFilter() },
       include: { traits: { include: { attribute: true } } },
     });
     return rows.map((v) => ({

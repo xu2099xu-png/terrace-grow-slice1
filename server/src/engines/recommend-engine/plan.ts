@@ -89,6 +89,29 @@ export function buildPerennialPlan(input: PlanInput): PlanCard {
 
   // ---- Step 3: variety ranking ----
   const ranked = rankVarieties(input.varieties, input.climateZone, sunlight);
+
+  // NO_MATCH: hard stop — do not generate blueberry container/soil/water-risk plan
+  if (sunlight.status === 'NO_MATCH') {
+    return {
+      suitability,
+      sunlight_status: {
+        ...sunlight,
+        hours_range: [input.terrace.sunHoursMin, input.terrace.sunHoursMax],
+        confidence: input.terrace.sunConfidence,
+      },
+      recommended_varieties: [],
+      selected_variety_id: null,
+      pollination: { need_two: false, recommended_partners: [], note: null },
+      container: null,
+      soil_mix: null,
+      missing_materials: [],
+      water_risk: null,
+      warnings,
+      next_action: '这个位置日照确实不够，建议先看看更耐阴的植物',
+      reasons: [],
+    };
+  }
+
   const selectedVarietyId =
     input.selectedVarietyId && ranked.some((v) => v.varietyId === input.selectedVarietyId)
       ? input.selectedVarietyId

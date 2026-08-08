@@ -129,7 +129,8 @@ describe('Slice 1 Integration', () => {
 
     expect(res.body.soil.feasibility).toBeDefined();
     expect(res.body.soil.mix).toBeDefined();
-    expect(res.body.soil.missing.length).toBeGreaterThanOrEqual(0);
+    expect(res.body.soil.mix.length).toBeGreaterThan(0);
+    expect(res.body.soil.mix.every((l: any) => l.pct > 0 && l.liters > 0)).toBe(true);
     expect(res.body.water_risk).toBeDefined();
   });
 
@@ -159,7 +160,7 @@ describe('Slice 1 Integration', () => {
       .post('/api/recommendations/perennial')
       .set('Authorization', `Bearer ${token2}`)
       .send({ crop_id: 'crop-blueberry' })
-      .expect(200);
+      .expect(201);
 
     expect(rec.body.suitability).toBe('likely_unsuitable');
     expect(rec.body.sunlight_status.status).toBe('LIKELY_NO_MATCH');
@@ -189,9 +190,79 @@ describe('Slice 1 Integration', () => {
       .post('/api/recommendations/perennial')
       .set('Authorization', `Bearer ${token3}`)
       .send({ crop_id: 'crop-blueberry' })
-      .expect(200);
+      .expect(201);
 
     expect(rec.body.suitability).toBe('borderline');
     expect(rec.body.sunlight_status.status).toBe('BORDERLINE');
+  });
+
+  it('12. NO_MATCH sunlight hard-stops blueberry plan', async () => {
+    const auth4 = await request(app.getHttpServer())
+      .post('/api/auth/anonymous')
+      .send({ device_id: 'test-device-4' })
+      .expect(201);
+
+    const token4 = auth4.body.token;
+
+    // north-facing with rare sun = 0-2h, medium confidence = NO_MATCH
+    await request(app.getHttpServer())
+      .post('/api/terraces')
+      .set('Authorization', `Bearer ${token4}`)
+      .send({
+        name: '北向无光照露台',
+        cityCode: 'beijing',
+        sunOrientationRaw: 'north',
+        sunTimeObsRaw: 'rarely',
+        rainExposed: true,
+      })
+      .expect(201);
+
+    const rec = await request(app.getHttpServer())
+      .post('/api/recommendations/perennial')
+      .set('Authorization', `Bearer ${token4}`)
+      .send({ crop_id: 'crop-blueberry' })
+      .expect(201);
+
+    // NO_MATCH must short-circuit: no container, no soil, no water risk
+    expect(rec.body.suitability).toBe('unsuitable');
+    expect(rec.body.sunlight_status.status).toBe('NO_MATCH');
+    expect(rec.body.recommended_varieties).toEqual([]);
+    expect(rec.body.selected_variety_id).toBeNull();
+    expect(rec.body.container).toBeNull();
+    expect(rec.body.soil_mix).toBeNull();
+    expect(rec.body.water_risk).toBeNull();
+    expect(rec.body.next_action).toContain('耐阴');
+  });
+
+  it('13. unknown city blocks reliable variety ranking', async () => {
+    const auth5 = await request(app.getHttpServer())
+      .post('/api/auth/anonymous')
+      .send({ device_id: 'test-device-5' })
+      .expect(201);
+
+    const token5 = auth5.body.token;
+
+    await request(app.getHttpServer())
+      .post('/api/terraces')
+      .set('Authorization', `Bearer ${token5}`)
+      .send({
+        name: '未知城市露台',
+        cityCode: 'unknown_city_xyz',
+        sunOrientationRaw: 'south',
+        sunTimeObsRaw: 'allday',
+        rainExposed: false,
+      })
+      .expect(201);
+
+    const rec = await request(app.getHttpServer())
+      .post('/api/recommendations/perennial')
+      .set('Authorization', `Bearer ${token5}`)
+      .send({ crop_id: 'crop-blueberry' })
+      .expect(201);
+
+    // unknown climate: varieties returned with score=0 and warning reason
+    expect(rec.body.recommended_varieties.length).toBeGreaterThan(0);
+    expect(rec.body.recommended_varieties.every((v: any) => v.score === 0)).toBe(true);
+    expect(rec.body.recommended_varieties[0].reasons.some((r: string) => r.includes('气候区未知'))).toBe(true);
   });
 });

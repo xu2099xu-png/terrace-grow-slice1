@@ -8,30 +8,39 @@ Architecture v1.4 (frozen). Only entities actually used by Slice 1.
   - `src/engines/recommend-engine/` — pure functions: sunlight, variety ranking, pollination, container, water risk
   - `src/engines/soil-engine/` — pure functions: soil mix solver with H1-H7 constraints + L1-L4 fallback ladder
   - `prisma/seed.ts` — DEV_FIXTURE seed (reviewStatus=draft, NOT approved content)
+  - `prisma/migrations/` — versioned database migrations
 - `h5/` — Vite + Vue 3 + Vant mobile frontend
 
 ## Quick Start
 
 ```bash
-# 1. Install dependencies
-cd server && npm install
-cd ../h5 && npm install
+# 1. Install dependencies (uses lockfile for reproducible builds)
+npm run setup
 
 # 2. Copy env and start database
 cd server
 cp .env.example .env
-docker-compose up -d
+cd ..
+npm run db:up
 
 # 3. Run migrations & seed
-npx prisma migrate dev
-npx tsx prisma/seed.ts
+npm run db:push
+npm run db:seed
 
-# 4. Start backend
-npm run start:dev
-
-# 5. Start frontend (another terminal)
-cd ../h5
+# 4. Start development (tsc watch + server + h5)
 npm run dev
+```
+
+## Testing
+
+```bash
+# Unit tests (22 examples)
+npm run test
+
+# API integration tests (11 assertions, requires database)
+cd server
+npm run build
+ALLOW_DRAFT_FIXTURES=true node test/integration-e2e.js
 ```
 
 ## Governance
@@ -43,12 +52,7 @@ All agricultural data tables carry governance fields:
 
 DEV_FIXTURE seed data is `reviewStatus='draft'` — NOT approved agricultural content. It exists ONLY for program verification.
 
-## Testing
-
-```bash
-cd server
-npx vitest run
-```
+**Draft data gate**: `ALLOW_DRAFT_FIXTURES=true` AND `APP_ENV=development` must both be set to allow draft data into engines.
 
 ## License
 

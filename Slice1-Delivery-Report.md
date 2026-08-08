@@ -165,6 +165,29 @@ terrace-grow/
 
 ---
 
+## 5.6 第二轮审计返工修复记录（2026-08-08）
+
+根据第二轮审计反馈，完成以下阻断级修复：
+
+| # | 问题 | 修复 |
+|---|------|------|
+| B | NO_MATCH 仍继续生成蓝莓容器/配土/积水方案 | `buildPerennialPlan()` 在 `sunlight.status === 'NO_MATCH'` 时完全短路，返回空方案（无容器/配土/积水风险） |
+| C | L3 fallback 明确 ignore H3-H5，违反硬约束设计 | L3 改为使用独立的 reviewed fallback template（`isFallback=true`），针对该模板自己的 slot bounds 和 targets 重新校验 H1-H7；无 fallback template 时返回 unavailable |
+| F | rainExposed 只在 UNSURE 路径出现，大部分用户未回答 | `TerraceWizard.vue` 重构为 4 步流程：城市 → 日照 → （UNSURE 时）朝向/时段 → 淋雨（必答）→ 提交 |
+| H | draftFilter 仅检查 ALLOW_DRAFT_FIXTURES，缺少 APP_ENV 保险；WaterRiskConfig 无 reviewStatus 字段却被过滤；Catalog/Material 无 gate | 创建统一 `GovernanceService`，要求 `APP_ENV=development && ALLOW_DRAFT_FIXTURES=true` 双重检查；`WaterRiskConfig` 不适用 governance 过滤；`CatalogController`/`MaterialController` 添加 gate |
+| E | recommended_varieties 缺少 traits 字段；plan 使用 ref<any>；缺少容器切换/reasons/liters 显示 | `RankedVariety` 扩展 `traits` 字段；`PerennialPlan.vue` 使用完整 TypeScript 接口；添加容器切换控件、品种 reasons 显示、配土 liters 显示 |
+| — | pH note 语义错误：startMethodNote 被当作 phManagementNote | `getPhManagementNote()` 根据 `crop.acidityNeed` 生成正确的 pH 管理提示，不再使用 `startMethodNote` |
+| — | 未知城市硬编码 700 chill hours / heatLevel 3 | `rankVarieties()` 检测 `chillHoursEstimate=0 || heatLevel=0` 时返回 score=0 并标记"气候区未知" |
+| I | integration.spec.ts 断言无效（missing.length >= 0）；期待 200 而非 201；授粉测试未验证 sexCompatible | 修复 `integration.spec.ts` 断言为有效检查；添加 NO_MATCH 短路和未知城市测试；`recommend-engine.spec.ts` 添加 `sexCompatible` 明确测试用例 |
+| J | 缺少 Prisma migrations；.env.example 凭据错误；README 脚本错误；setup 使用 npm install | 生成并提交 `prisma/migrations/20260808103335_init`；修复 `.env.example` 使用 terrace/terrace；README 改为 `npm run dev`；根 `setup` 改为 `npm ci` |
+
+**验证结果：**
+- 单元测试：24/24 通过（soil-engine 9 例 + recommend-engine 15 例，新增 sexCompatible 2 例）
+- API 集成测试：11/11 通过
+- TypeScript 编译：零错误
+
+---
+
 ## 6. 已知局限与待办
 
 1. **浏览器自动化**：当前 E2E 使用 `curl` 验证 H5 proxy + API。如需要真正的浏览器自动化（Playwright / Puppeteer），可在后续切片引入相应 skill 和测试套件。

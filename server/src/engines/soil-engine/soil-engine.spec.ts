@@ -105,6 +105,15 @@ describe('soil-engine', () => {
     const input: SoilEngineInput = {
       ...baseInput,
       targets: { drainage: [3.0, 4.2], aeration: [2.8, 4.0], retention: [4.6, 5.0] }, // impossible
+      fallbackTemplate: {
+        slots: [
+          { functionGroup: 'base', minPct: 35, maxPct: 65, preferredMaterials: ['peat', 'coco'], required: true },
+          { functionGroup: 'drainage', minPct: 15, maxPct: 40, preferredMaterials: ['perlite'], required: true },
+          { functionGroup: 'organic', minPct: 5, maxPct: 30, preferredMaterials: ['bark'], required: true },
+          { functionGroup: 'retention', minPct: 0, maxPct: 20, preferredMaterials: ['vermiculite'], required: false },
+        ],
+        targets: { drainage: [2.5, 4.5], aeration: [2.5, 4.5], retention: [2.0, 3.5] },
+      },
     };
     const r = calculateSoilMix(input);
     expect(r.feasibility).toBe('fallback');

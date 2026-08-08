@@ -26,6 +26,7 @@ export interface PreparedContext {
   subFromOf: Map<string, EngineMaterial>; // substitution to-material -> from-material
   subCompatibilityOf: Map<string, number>; // substitution to-material -> compatibility (1-5)
   requiresAcidification: boolean;
+  fallbackTemplate?: { slots: EngineSlot[]; targets: PropertyTargets };
 }
 
 const GROUP_LABEL: Record<FunctionGroup, string> = {
@@ -192,6 +193,7 @@ export function prepare(input: SoilEngineInput, containerName?: string): Prepare
     subFromOf,
     subCompatibilityOf,
     requiresAcidification: input.requiresAcidification,
+    fallbackTemplate: input.fallbackTemplate,
   };
 }
 
@@ -472,20 +474,22 @@ export function solve(ctx: PreparedContext, forbiddenPairs: [string, string][] =
       relaxedTargets: relaxed,
     };
   }
-  // L3: ignore H3-H5, keep H1-H2-H6-H7 (never bypass hard constraints)
-  const wideTargets: PropertyTargets = {
-    drainage: [0, 5],
-    aeration: [0, 5],
-    retention: [0, 5],
-  };
-  const l3 = solvePass(ctx, pool, wideTargets, forbiddenPairs);
-  if (l3) {
-    return {
-      status: 'solved',
-      feasibility: 'fallback',
-      best: l3,
-      usedSubstitutionIds: [...l3.comp.keys()].filter((id) => ctx.subPenaltyOf.has(id)),
+  // L3: use reviewed fallback template with its own slot bounds and targets
+  if (ctx.fallbackTemplate) {
+    const fbCtx: PreparedContext = {
+      ...ctx,
+      slots: ctx.fallbackTemplate.slots,
+      targets: ctx.fallbackTemplate.targets,
     };
+    const l3 = solvePass(fbCtx, pool, ctx.fallbackTemplate.targets, forbiddenPairs);
+    if (l3) {
+      return {
+        status: 'solved',
+        feasibility: 'fallback',
+        best: l3,
+        usedSubstitutionIds: [...l3.comp.keys()].filter((id) => ctx.subPenaltyOf.has(id)),
+      };
+    }
   }
 
   return { status: 'unsolved', usedSubstitutionIds: [] };

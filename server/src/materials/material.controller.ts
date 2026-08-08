@@ -1,16 +1,21 @@
 import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { GovernanceService } from '../governance.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('materials')
 @UseGuards(AuthGuard)
 export class MaterialController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly governance: GovernanceService,
+  ) {}
 
   @Get()
   async list() {
     return this.prisma.substrateMaterial.findMany({
+      where: this.governance.reviewStatusFilter(),
       include: { cropRules: { where: { cropId: 'crop-blueberry' } } },
     });
   }

@@ -3,7 +3,7 @@
   "private": true,
   "description": "Terrace container planting product - Slice 1 (blueberry vertical slice)",
   "scripts": {
-    "setup": "npm install && npm --prefix server install && npm --prefix h5 install",
+    "setup": "npm ci && npm --prefix server ci && npm --prefix h5 ci",
     "db:up": "docker compose up -d postgres && docker compose wait postgres",
     "db:push": "npm --prefix server run db:push",
     "db:seed": "npm --prefix server run seed",
