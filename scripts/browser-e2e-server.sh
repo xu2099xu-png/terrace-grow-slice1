@@ -9,6 +9,14 @@ export DATABASE_URL="postgresql://terrace:terrace@localhost:5433/terrace_grow_te
 export APP_ENV=development
 export ALLOW_DRAFT_FIXTURES=true
 
+# Slice 3 deterministic E2E:
+#  - LOCATION_RESOLVER=mock: geolocation resolves to a seeded city (beijing)
+#  - SEASON_DATE: fixed "today" so sowing windows deterministically hit
+#  - WEATHER_PROVIDER left as http (no key → unavailable) → Golden Path B
+#    asserts graceful degradation ("暂未结合近期天气") while recommendations exist
+export LOCATION_RESOLVER=mock
+export SEASON_DATE=2026-04-10
+
 echo "[browser-e2e] building h5..."
 (cd "$ROOT/h5" && npm run build >/dev/null)
 

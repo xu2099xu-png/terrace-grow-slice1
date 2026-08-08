@@ -9,6 +9,8 @@ import { MaterialModule } from './materials/material.module';
 import { RecommendationModule } from './recommendations/recommendation.module';
 import { SoilModule } from './soil/soil.module';
 import { PlantingsModule } from './plantings/plantings.module';
+import { SeasonsModule } from './seasons/seasons.module';
+import { LocationModule } from './location/location.module';
 import { AuthGuard } from './auth/auth.guard';
 
 @Module({
@@ -25,6 +27,8 @@ import { AuthGuard } from './auth/auth.guard';
     RecommendationModule,
     SoilModule,
     PlantingsModule,
+    SeasonsModule,
+    LocationModule,
   ],
   providers: [
     { provide: APP_GUARD, useExisting: AuthGuard },

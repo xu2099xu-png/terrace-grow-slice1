@@ -54,6 +54,7 @@ async function clear() {
   await prisma.varietyTrait.deleteMany();
   await prisma.attributeDefinition.deleteMany();
   await prisma.variety.deleteMany();
+  await prisma.sowingCalendar.deleteMany();
   await prisma.crop.deleteMany();
   await prisma.climateZone.deleteMany();
   await prisma.sunEstimateRule.deleteMany();
@@ -718,11 +719,59 @@ async function main() {
     ],
   });
 
+  // ---------- Slice 3: seasonal crops (model test data) ----------
+  await prisma.crop.createMany({
+    data: [
+      { id: 'crop-tomato', name: '番茄', lifeType: 'seasonal', category: 'vegetable', difficulty: 1, familyUse: 5, yieldLevel: 4, harvestDaysMin: 60, harvestDaysMax: 90, containerFriendly: true, recommendedStartMethod: 'nursery_plant', startMethodNote: '番茄建议买苗移栽，播种育苗周期长', waterloggingSensitivity: 3, acidityNeed: 'slightly_acid', ...GOV, version: 1 },
+      { id: 'crop-carrot', name: '胡萝卜', lifeType: 'seasonal', category: 'vegetable', difficulty: 1, familyUse: 5, yieldLevel: 3, harvestDaysMin: 70, harvestDaysMax: 100, containerFriendly: true, recommendedStartMethod: 'direct_seed', startMethodNote: '胡萝卜直播即可，不宜移栽', waterloggingSensitivity: 2, acidityNeed: 'neutral', ...GOV, version: 1 },
+      { id: 'crop-peanut', name: '花生', lifeType: 'seasonal', category: 'vegetable', difficulty: 2, familyUse: 4, yieldLevel: 3, harvestDaysMin: 100, harvestDaysMax: 130, containerFriendly: false, recommendedStartMethod: 'direct_seed', startMethodNote: '花生直播，需较深土层', waterloggingSensitivity: 2, acidityNeed: 'slightly_acid', ...GOV, version: 1 },
+      { id: 'crop-lettuce', name: '生菜', lifeType: 'seasonal', category: 'vegetable', difficulty: 1, familyUse: 5, yieldLevel: 3, harvestDaysMin: 30, harvestDaysMax: 45, containerFriendly: true, recommendedStartMethod: 'either', startMethodNote: '生菜直播或买苗均可，生长快', waterloggingSensitivity: 2, acidityNeed: 'neutral', ...GOV, version: 1 },
+    ],
+  });
+
+  await prisma.environmentRequirement.createMany({
+    data: [
+      { ownerType: 'crop', ownerId: 'crop-tomato', minSunHours: 6, tempMin: 10, tempMax: 35, optimalTempMin: 20, optimalTempMax: 28, frostSensitive: true, ...GOV },
+      { ownerType: 'crop', ownerId: 'crop-carrot', minSunHours: 4, tempMin: 5, tempMax: 30, optimalTempMin: 15, optimalTempMax: 24, frostSensitive: false, ...GOV },
+      { ownerType: 'crop', ownerId: 'crop-peanut', minSunHours: 6, tempMin: 15, tempMax: 35, optimalTempMin: 22, optimalTempMax: 30, frostSensitive: true, ...GOV },
+      { ownerType: 'crop', ownerId: 'crop-lettuce', minSunHours: 3, tempMin: 2, tempMax: 28, optimalTempMin: 12, optimalTempMax: 22, frostSensitive: false, ...GOV },
+    ],
+  });
+
+  await prisma.sowingCalendar.createMany({
+    data: [
+      // tomato: nursery_plant
+      { cropId: 'crop-tomato', climateZoneCode: 'north_china', startMethod: 'nursery_plant', windowKey: 'spring', windowStart: '03-15', windowEnd: '05-31', ...GOV, version: 1 },
+      { cropId: 'crop-tomato', climateZoneCode: 'east_china', startMethod: 'nursery_plant', windowKey: 'spring', windowStart: '03-01', windowEnd: '05-15', ...GOV, version: 1 },
+      { cropId: 'crop-tomato', climateZoneCode: 'south_china', startMethod: 'nursery_plant', windowKey: 'spring', windowStart: '02-15', windowEnd: '04-30', ...GOV, version: 1 },
+      // carrot: direct_seed, double window (spring + autumn)
+      { cropId: 'crop-carrot', climateZoneCode: 'north_china', startMethod: 'direct_seed', windowKey: 'spring', windowStart: '03-01', windowEnd: '04-30', ...GOV, version: 1 },
+      { cropId: 'crop-carrot', climateZoneCode: 'north_china', startMethod: 'direct_seed', windowKey: 'autumn', windowStart: '08-20', windowEnd: '09-30', ...GOV, version: 1 },
+      { cropId: 'crop-carrot', climateZoneCode: 'east_china', startMethod: 'direct_seed', windowKey: 'spring', windowStart: '03-10', windowEnd: '05-10', ...GOV, version: 1 },
+      { cropId: 'crop-carrot', climateZoneCode: 'east_china', startMethod: 'direct_seed', windowKey: 'autumn', windowStart: '08-25', windowEnd: '10-05', ...GOV, version: 1 },
+      { cropId: 'crop-carrot', climateZoneCode: 'south_china', startMethod: 'direct_seed', windowKey: 'winter', windowStart: '11-15', windowEnd: '01-31', ...GOV, version: 1 }, // year-crossing
+      // peanut: direct_seed
+      { cropId: 'crop-peanut', climateZoneCode: 'north_china', startMethod: 'direct_seed', windowKey: 'spring', windowStart: '04-15', windowEnd: '06-15', ...GOV, version: 1 },
+      { cropId: 'crop-peanut', climateZoneCode: 'east_china', startMethod: 'direct_seed', windowKey: 'spring', windowStart: '04-01', windowEnd: '06-01', ...GOV, version: 1 },
+      { cropId: 'crop-peanut', climateZoneCode: 'south_china', startMethod: 'direct_seed', windowKey: 'spring', windowStart: '03-15', windowEnd: '05-31', ...GOV, version: 1 },
+      // lettuce: either → separate concrete windows (AC-24)
+      { cropId: 'crop-lettuce', climateZoneCode: 'north_china', startMethod: 'direct_seed', windowKey: 'spring', windowStart: '03-01', windowEnd: '04-30', ...GOV, version: 1 },
+      { cropId: 'crop-lettuce', climateZoneCode: 'north_china', startMethod: 'direct_seed', windowKey: 'autumn', windowStart: '08-20', windowEnd: '09-30', ...GOV, version: 1 },
+      { cropId: 'crop-lettuce', climateZoneCode: 'north_china', startMethod: 'nursery_plant', windowKey: 'spring', windowStart: '04-01', windowEnd: '05-15', ...GOV, version: 1 },
+      { cropId: 'crop-lettuce', climateZoneCode: 'east_china', startMethod: 'direct_seed', windowKey: 'spring', windowStart: '03-15', windowEnd: '05-15', ...GOV, version: 1 },
+      { cropId: 'crop-lettuce', climateZoneCode: 'east_china', startMethod: 'direct_seed', windowKey: 'autumn', windowStart: '09-01', windowEnd: '10-15', ...GOV, version: 1 },
+      { cropId: 'crop-lettuce', climateZoneCode: 'east_china', startMethod: 'nursery_plant', windowKey: 'spring', windowStart: '04-01', windowEnd: '05-31', ...GOV, version: 1 },
+      { cropId: 'crop-lettuce', climateZoneCode: 'south_china', startMethod: 'direct_seed', windowKey: 'winter', windowStart: '11-01', windowEnd: '02-15', ...GOV, version: 1 }, // year-crossing
+      { cropId: 'crop-lettuce', climateZoneCode: 'south_china', startMethod: 'nursery_plant', windowKey: 'winter', windowStart: '10-15', windowEnd: '01-31', ...GOV, version: 1 },
+    ],
+  });
+
   console.log('Seed done.');
   console.log('  crop: 蓝莓, 葡萄 / grape varieties: 阳光玫瑰, 巨峰');
   console.log('  containers: 塑料盆, 陶土盆, 无纺布美植袋');
   console.log('  materials: 泥炭, 椰糠, 珍珠岩, 松鳞, 蛭石, 松针土, 粗沙(caution), 园土(avoid)');
   console.log('  lifecycle: grape crop-level v1 + kyoho variety-level v1 (fixture offsets)');
+  console.log('  seasonal (Slice 3): 番茄, 胡萝卜, 花生, 生菜 + sowing calendars (fixture windows)');
   console.log('  ALL ROWS ARE reviewStatus=draft DEV_FIXTURE — NOT APPROVED CONTENT');
 }
 

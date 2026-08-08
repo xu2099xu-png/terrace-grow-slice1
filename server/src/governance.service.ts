@@ -35,6 +35,7 @@ export class GovernanceService {
       'containerType', 'containerModifier', 'containerRequirement',
       'substrateMaterial', 'materialCropRule', 'materialSubstitution',
       'soilRecipeTemplate', 'lifecycleTemplate', 'lifecycleStage', 'factEvidence',
+      'sowingCalendar',
     ];
     return tablesWithReviewStatus.includes(tableName);
   }

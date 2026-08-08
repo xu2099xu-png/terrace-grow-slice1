@@ -13,6 +13,7 @@
     "test:unit": "npm --prefix server run test:unit",
     "test:integration": "npm --prefix server run test:integration",
     "test:slice2-gate": "npm --prefix server run test:slice2-gate",
+    "test:slice3-gate": "npm --prefix server run test:slice3-gate",
     "test:e2e": "npm --prefix server run test:e2e",
     "test:h5": "npm --prefix h5 run test",
     "test:browser": "playwright test",

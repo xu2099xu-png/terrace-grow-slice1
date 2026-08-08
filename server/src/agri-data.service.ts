@@ -222,4 +222,59 @@ export class AgriDataService {
   async getTerraceProfile(userId: string) {
     return this.prisma.terraceProfile.findFirst({ where: { userId } });
   }
+
+  // ---------- seasonal (Slice 3) ----------
+
+  /** city_code → ClimateZone via structured cityCodes JSON array (AC-08). */
+  async getClimateZoneByCity(cityCode: string) {
+    return this.prisma.climateZone.findFirst({
+      where: { cityCodes: { array_contains: cityCode } },
+    });
+  }
+
+  /** Supported cities derived from climate mapping (AC-30). */
+  async listSupportedCities(): Promise<{ city_code: string; city_name: string }[]> {
+    const zones = await this.prisma.climateZone.findMany({ select: { cityCodes: true } });
+    const out: { city_code: string; city_name: string }[] = [];
+    const seen = new Set<string>();
+    for (const z of zones) {
+      for (const code of (z.cityCodes as unknown as string[]) || []) {
+        if (!seen.has(code)) {
+          seen.add(code);
+          out.push({ city_code: code, city_name: code });
+        }
+      }
+    }
+    return out.sort((a, b) => a.city_code.localeCompare(b.city_code));
+  }
+
+  /** Governed seasonal crops (Slice 3 catalog rows). */
+  async listSeasonalCrops() {
+    return this.prisma.crop.findMany({
+      where: { lifeType: 'seasonal', ...this.review },
+    });
+  }
+
+  /** Governed sowing calendars for a zone + optional crop/method set. */
+  async listSowingCalendars(climateZoneCode: string, cropIds?: string[], startMethod?: string) {
+    return this.prisma.sowingCalendar.findMany({
+      where: {
+        climateZoneCode,
+        ...(cropIds && cropIds.length ? { cropId: { in: cropIds } } : {}),
+        ...(startMethod ? { startMethod } : {}),
+        ...this.review,
+      },
+    });
+  }
+
+  /** Crop detail for the unified catalog (AC-15). */
+  async getCropDetail(cropId: string) {
+    return this.prisma.crop.findUnique({
+      where: { id: cropId, ...this.review },
+      include: {
+        environmentRequirement: { where: this.review },
+        sowingCalendars: { where: this.review },
+      },
+    });
+  }
 }

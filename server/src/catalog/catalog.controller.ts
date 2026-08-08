@@ -13,6 +13,12 @@ export class CatalogController {
   }
 
   @Public()
+  @Get(':id')
+  async detail(@Param('id') id: string) {
+    return this.agri.getCropDetail(id);
+  }
+
+  @Public()
   @Get(':id/varieties')
   async varieties(@Param('id') cropId: string) {
     const rows = await this.agri.listVarieties(cropId);

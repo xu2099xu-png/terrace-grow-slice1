@@ -16,6 +16,7 @@
     "test:unit": "vitest run src/",
     "test:integration": "vitest run test/",
     "test:slice2-gate": "vitest run test/slice2-gate.spec.ts",
+    "test:slice3-gate": "vitest run test/slice3-gate.spec.ts",
     "test:e2e": "node test/integration-e2e.js",
     "test:h5": "npm --prefix ../h5 run test",
     "test:all": "npm run db:test:setup && npm run build && npm run test:unit && npm run test:integration && npm run test:e2e && npm run test:h5"

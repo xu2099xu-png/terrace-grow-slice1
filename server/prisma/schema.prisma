@@ -102,6 +102,8 @@ model ClimateZone {
   cityCodes          Json // string[]
   chillHoursEstimate Int // winter chill estimate (hours)
   heatLevel          Int // 1-5 summer heat
+
+  sowingCalendars SowingCalendar[]
 }
 
 // ---------- catalog ----------
@@ -138,6 +140,7 @@ model Crop {
   recipeTemplates        SoilRecipeTemplate[]
   lifecycleTemplates     LifecycleTemplate[]
   plantings              PlantingRecord[]
+  sowingCalendars        SowingCalendar[]
 }
 
 model Variety {
@@ -543,4 +546,32 @@ model PlantingEvent {
 
   @@unique([plantingId, clientEventId])
   @@index([plantingId])
+}
+
+// ---------- sowing calendar (Slice 3) ----------
+
+// When a crop+zone+concrete start method may be started. Agricultural fact →
+// governed. Multiple independent windows are allowed per (crop, zone, method)
+// via windowKey (AC-27). startMethod is a concrete method only — 'either' is
+// NOT allowed here (it belongs to Crop.recommended_start_method).
+model SowingCalendar {
+  id              String   @id @default(uuid())
+  cropId          String
+  climateZoneCode String // FK → ClimateZone.code
+  startMethod     String // nursery_plant | direct_seed (DB CHECK, never 'either')
+  windowKey       String // stable id: spring_1 / autumn_1 ...
+  windowStart     String // 'MM-DD', may cross year (e.g. '11-01')
+  windowEnd       String // 'MM-DD', inclusive
+  // governance
+  source          String   @default("manual")
+  reviewStatus    String   @default("draft")
+  confidence      Int      @default(1)
+  version         Int      @default(1)
+  updatedAt       DateTime @updatedAt
+
+  crop        Crop        @relation(fields: [cropId], references: [id])
+  climateZone ClimateZone @relation(fields: [climateZoneCode], references: [code])
+
+  @@unique([cropId, climateZoneCode, startMethod, windowKey])
+  @@index([cropId, climateZoneCode, startMethod])
 }
