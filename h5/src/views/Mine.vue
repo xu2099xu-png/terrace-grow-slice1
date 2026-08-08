@@ -8,6 +8,19 @@
         <van-cell title="日照估算" :value="sunInfo" />
         <van-cell title="气候区" :value="profile?.climateZone || '—'" />
       </van-cell-group>
+
+      <van-cell-group inset title="我的种植">
+        <van-cell v-if="!plantings.length" title="暂无种植记录" />
+        <van-cell
+          v-for="p in plantings"
+          :key="p.id"
+          :title="cropLabel(p)"
+          :label="plantingLabel(p)"
+          is-link
+          @click="router.push(`/plantings/${p.id}`)"
+        />
+      </van-cell-group>
+
       <div class="actions">
         <van-button type="primary" block round @click="router.push('/')">返回首页</van-button>
       </div>
@@ -22,6 +35,7 @@ import api from '../api/client';
 
 const router = useRouter();
 const profile = ref<any>(null);
+const plantings = ref<any[]>([]);
 
 const sunInfo = computed(() => {
   if (!profile.value) return '—';
@@ -31,10 +45,31 @@ const sunInfo = computed(() => {
   return `${min}–${max}h${conf}`;
 });
 
+function cropLabel(p: any): string {
+  return p.cropId === 'crop-grape' ? '葡萄' : '蓝莓';
+}
+
+function plantingLabel(p: any): string {
+  const variety = p.varietyId ? '' : '品种暂不确定 · ';
+  const statusMap: Record<string, string> = {
+    planned: '计划中',
+    active: '进行中',
+    established: '已定植完成',
+    lifecycle_unavailable: '流程暂不可用',
+  };
+  return `${variety}开始于 ${String(p.startDate).slice(0, 10)} · ${statusMap[p.status] || p.status}`;
+}
+
 onMounted(async () => {
   try {
     const res = await api.get('/terraces/mine');
     profile.value = res.data;
+  } catch (e) {
+    // ignore
+  }
+  try {
+    const res = await api.get('/users/me/plantings');
+    plantings.value = res.data;
   } catch (e) {
     // ignore
   }

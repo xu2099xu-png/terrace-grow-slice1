@@ -149,6 +149,39 @@ export class AgriDataService {
     return this.prisma.waterRiskConfig.findMany();
   }
 
+  // ---------- lifecycle (Slice 2) ----------
+
+  /**
+   * Select the governed lifecycle template for a crop+variety+startMethod.
+   * Priority: variety-level > crop-level; highest active version wins.
+   */
+  async getLifecycleTemplate(cropId: string, varietyId: string | null, startMethod: string) {
+    if (varietyId) {
+      const v = await this.prisma.lifecycleTemplate.findFirst({
+        where: { cropId, varietyId, startMethod, active: true, ...this.review },
+        orderBy: { version: 'desc' },
+        include: { stages: { where: this.review, orderBy: { order: 'asc' } } },
+      });
+      if (v && v.stages.length > 0) return v;
+    }
+    return this.prisma.lifecycleTemplate.findFirst({
+      where: { cropId, varietyId: null, startMethod, active: true, ...this.review },
+      orderBy: { version: 'desc' },
+      include: { stages: { where: this.review, orderBy: { order: 'asc' } } },
+    });
+  }
+
+  /**
+   * Get the template pinned by a planting (by template id + version).
+   * Governance applies: a template that later loses approval must not serve.
+   */
+  async getLifecycleTemplateByIdAndVersion(templateId: string, version: number) {
+    return this.prisma.lifecycleTemplate.findFirst({
+      where: { id: templateId, version, ...this.review },
+      include: { stages: { where: this.review, orderBy: { order: 'asc' } } },
+    });
+  }
+
   // ---------- user-owned data (no governance field) ----------
 
   async getUserMaterialInventory(userId: string) {

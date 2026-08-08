@@ -119,6 +119,11 @@
           <van-cell :title="plan.next_action" />
         </van-cell-group>
 
+        <!-- 开始种植（仅有效方案） -->
+        <div class="actions">
+          <van-button type="success" block round @click="goStartPlanting">开始种植</van-button>
+        </div>
+
         <!-- 材料调整 -->
         <div class="actions">
           <van-button type="primary" block round @click="showMaterials = true">查看/调整我的材料</van-button>
@@ -346,6 +351,18 @@ async function recalculateSoil() {
   } catch (e: any) {
     showToast('更新失败');
   }
+}
+
+function goStartPlanting() {
+  if (!plan.value || !plan.value.container?.selected_type_id) return;
+  const query = new URLSearchParams({
+    crop_id: props.cropId,
+    container_type_id: plan.value.container.selected_type_id,
+  });
+  if (plan.value.selected_variety_id) {
+    query.set('variety_id', plan.value.selected_variety_id);
+  }
+  router.push(`/planting-start?${query.toString()}`);
 }
 
 onMounted(load);

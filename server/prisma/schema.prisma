@@ -30,6 +30,7 @@ model User {
   identities UserIdentity[]
   terraces   TerraceProfile[]
   materials  UserMaterialInventory[]
+  plantings  PlantingRecord[]
 }
 
 model UserIdentity {
@@ -70,6 +71,7 @@ model TerraceProfile {
   updatedAt         DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id])
+  plantings PlantingRecord[]
 }
 
 // level -> default hours range (data, not code)
@@ -134,6 +136,7 @@ model Crop {
   containerRequirements  ContainerRequirement[]
   materialRules          MaterialCropRule[]
   recipeTemplates        SoilRecipeTemplate[]
+  lifecycleTemplates     LifecycleTemplate[]
 }
 
 model Variety {
@@ -156,6 +159,8 @@ model Variety {
   pollinationFrom      PollinationCompatibility[] @relation("from_variety")
   pollinationTo        PollinationCompatibility[] @relation("to_variety")
   containerRequirements ContainerRequirement[]
+  lifecycleTemplates   LifecycleTemplate[]
+  plantings            PlantingRecord[]
 }
 
 model AttributeDefinition {
@@ -449,4 +454,91 @@ model FactEvidence {
   reviewStatus     String @default("draft")
 
   evidenceSource EvidenceSource @relation(fields: [evidenceSourceId], references: [id])
+}
+
+// ---------- lifecycle / planting (Slice 2) ----------
+
+// v1.4 §3.17 lifecycle template: crop-level or variety-level (variety wins).
+model LifecycleTemplate {
+  id          String  @id @default(uuid())
+  cropId      String
+  varietyId   String? // null = crop-level generic flow
+  startMethod String // 'nursery_plant' etc.
+  version     Int
+  active      Boolean @default(true)
+  // governance
+  source       String  @default("manual")
+  reviewStatus String  @default("draft")
+  confidence   Int     @default(1)
+
+  stages LifecycleStage[]
+
+  crop    Crop?    @relation(fields: [cropId], references: [id])
+  variety Variety? @relation(fields: [varietyId], references: [id])
+
+  @@unique([cropId, varietyId, startMethod, version])
+  @@index([cropId, varietyId, startMethod])
+}
+
+// Stage content is agricultural fact -> must be governed.
+model LifecycleStage {
+  id                  String  @id @default(uuid())
+  lifecycleTemplateId String
+  stageKey            String
+  stageName           String
+  order               Int
+  startOffset         Int // days relative to startDate
+  endOffset           Int
+  actions             Json // string[] action keys
+  explanation         String?
+  // governance
+  source       String  @default("manual")
+  reviewStatus String  @default("draft")
+  confidence   Int     @default(1)
+
+  lifecycle LifecycleTemplate @relation(fields: [lifecycleTemplateId], references: [id])
+
+  @@unique([lifecycleTemplateId, stageKey])
+  @@index([lifecycleTemplateId, order])
+}
+
+// User-owned planting record. NOT agricultural content -> no governance filter.
+model PlantingRecord {
+  id                  String   @id @default(uuid())
+  userId              String
+  terraceId           String
+  cropId              String
+  varietyId           String?
+  containerTypeId     String
+  startMethod         String
+  startDate           DateTime // date at 00:00 UTC
+  status              String   @default("active") // planned | active | established | lifecycle_unavailable
+  lifecycleTemplateId String
+  lifecycleVersion    Int // PINNED at creation (S2-AC-15)
+  clientRequestId     String?
+  createdAt           DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id])
+  terrace  TerraceProfile @relation(fields: [terraceId], references: [id])
+  variety  Variety? @relation(fields: [varietyId], references: [id])
+  events   PlantingEvent[]
+
+  @@unique([userId, clientRequestId])
+  @@index([userId])
+  @@index([cropId])
+}
+
+model PlantingEvent {
+  id            String   @id @default(uuid())
+  plantingId    String
+  actionKey     String
+  eventType     String   @default("action_completed")
+  happenedAt    DateTime @default(now())
+  note          String?
+  clientEventId String?
+
+  planting PlantingRecord @relation(fields: [plantingId], references: [id])
+
+  @@unique([plantingId, clientEventId])
+  @@index([plantingId])
 }

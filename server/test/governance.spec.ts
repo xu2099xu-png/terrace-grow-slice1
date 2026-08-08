@@ -63,6 +63,16 @@ describe('Slice 1 Governance (production-like)', () => {
       where: { id: 'var-oneal' },
       data: { reviewStatus: 'approved' },
     });
+    // Promote grape crop + its crop-level lifecycle TEMPLATE to approved,
+    // but keep all LifecycleStages draft (S2-AC-03).
+    await prisma.crop.update({
+      where: { id: 'crop-grape' },
+      data: { reviewStatus: 'approved' },
+    });
+    await prisma.lifecycleTemplate.update({
+      where: { id: 'lc-grape-crop-v1' },
+      data: { reviewStatus: 'approved' },
+    });
   });
 
   afterAll(async () => {
@@ -75,14 +85,24 @@ describe('Slice 1 Governance (production-like)', () => {
       where: { id: 'var-oneal' },
       data: { reviewStatus: 'draft' },
     });
+    await prisma.crop.update({
+      where: { id: 'crop-grape' },
+      data: { reviewStatus: 'draft' },
+    });
+    await prisma.lifecycleTemplate.update({
+      where: { id: 'lc-grape-crop-v1' },
+      data: { reviewStatus: 'draft' },
+    });
     await app.close();
   });
 
-  it('crops list: approved parent visible, draft parents hidden', async () => {
+  it('crops list: approved parents visible, draft parents hidden', async () => {
     const res = await request(app.getHttpServer()).get('/api/crops?life_type=perennial').expect(200);
     const names = res.body.map((c: any) => c.name);
-    expect(names).toContain('蓝莓'); // approved crop is visible
-    expect(names.length).toBe(1); // all other crops are draft -> hidden
+    // blueberry + grape are approved; all other crops are draft -> hidden
+    expect(names).toContain('蓝莓');
+    expect(names).toContain('葡萄');
+    expect(names.length).toBe(2);
   });
 
   it('crops list: approved crop does NOT drag draft environmentRequirement', async () => {
@@ -196,9 +216,12 @@ describe('Slice 1 Governance (production-like)', () => {
     if (!identity) throw new Error('identity not found');
 
     // directly seed a leftover inventory row pointing at a draft material
-    // (simulates legacy data written before the gate existed)
-    await prisma.userMaterialInventory.create({
-      data: { userId: identity.userId, materialId: 'mat-perlite', level: 'enough' },
+    // (simulates legacy data written before the gate existed); upsert so the
+    // spec is repeatable across runs
+    await prisma.userMaterialInventory.upsert({
+      where: { userId_materialId: { userId: identity.userId, materialId: 'mat-perlite' } },
+      update: { level: 'enough' },
+      create: { userId: identity.userId, materialId: 'mat-perlite', level: 'enough' },
     });
 
     const mine = await request(app.getHttpServer())
@@ -208,5 +231,59 @@ describe('Slice 1 Governance (production-like)', () => {
     // mat-perlite is draft -> its inventory entry must not appear
     const ids = mine.body.map((r: any) => r.materialId);
     expect(ids).not.toContain('mat-perlite');
+  });
+
+  it('AC-03: approved LifecycleTemplate must not leak draft LifecycleStage', async () => {
+    // grape crop + crop-level template are approved; its stages are draft.
+    // A planting created in production must resolve NO stage content.
+    const auth = await request(app.getHttpServer())
+      .post('/api/auth/anonymous')
+      .send({ device_id: 'gov-device-lc' })
+      .expect(201);
+    const token2 = auth.body.token;
+    const identity = await prisma.userIdentity.findFirst({
+      where: { provider: 'anonymous_device', providerUid: 'gov-device-lc' },
+    });
+    if (!identity) throw new Error('identity not found');
+
+    // create terrace for this user
+    await request(app.getHttpServer())
+      .post('/api/terraces')
+      .set('Authorization', `Bearer ${token2}`)
+      .send({
+        name: 'lc露台',
+        cityCode: 'beijing',
+        sunExposureLevel: 'LONG',
+        rainExposed: false,
+      })
+      .expect(201);
+
+    // create a planting with variety=null -> crop-level lifecycle (approved),
+    // but the template's stages are draft -> getLifecycleTemplate filters them
+    const terrace = await prisma.terraceProfile.findFirst({ where: { userId: identity.userId } });
+    const res = await request(app.getHttpServer())
+      .post('/api/plantings')
+      .set('Authorization', `Bearer ${token2}`)
+      .send({
+        terrace_id: terrace?.id,
+        crop_id: 'crop-grape',
+        variety_id: null,
+        container_type_id: 'ct-fabric-bag',
+        start_date: '2026-01-01',
+        client_request_id: 'gov-lc-2',
+      })
+      .expect(201);
+
+    // Because stages are draft, the planting gets status lifecycle_unavailable
+    // (no fabricated stages) — never draft stage content.
+    expect(res.body.planting.status).toBe('lifecycle_unavailable');
+
+    const now = await request(app.getHttpServer())
+      .get(`/api/plantings/${res.body.planting.id}/now`)
+      .set('Authorization', `Bearer ${token2}`)
+      .expect(200);
+    expect(now.body.status).toBe('lifecycle_unavailable');
+    expect(now.body.current_stage).toBeNull();
+    expect(now.body.actions).toEqual([]);
   });
 });

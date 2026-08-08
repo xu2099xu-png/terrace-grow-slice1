@@ -140,7 +140,9 @@ function goBack() {
 }
 
 function nextStep() {
-  if (step.value === 2 && sunExposureLevel.value === 'UNSURE') {
+  if (step.value === 1) {
+    step.value = 2; // city -> sunlight
+  } else if (step.value === 2 && sunExposureLevel.value === 'UNSURE') {
     step.value = 3; // auxiliary questions for unsure sunlight
   } else if (step.value === 2 || step.value === 3) {
     step.value = 4; // rain exposure is mandatory for all paths

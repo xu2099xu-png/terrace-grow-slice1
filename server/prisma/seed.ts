@@ -32,6 +32,10 @@ const GOV = { source: 'manual', reviewStatus: 'draft', confidence: 1 } as const;
 // for tables without a version column
 
 async function clear() {
+  await prisma.plantingEvent.deleteMany();
+  await prisma.plantingRecord.deleteMany();
+  await prisma.lifecycleStage.deleteMany();
+  await prisma.lifecycleTemplate.deleteMany();
   await prisma.factEvidence.deleteMany();
   await prisma.evidenceSource.deleteMany();
   await prisma.userMaterialInventory.deleteMany();
@@ -546,10 +550,179 @@ async function main() {
     ],
   });
 
+  // ---------- grape (Slice 2 DEV_FIXTURE) ----------
+  // All rows remain reviewStatus='draft' — NOT approved agricultural content.
+  const grape = await prisma.crop.create({
+    data: {
+      id: 'crop-grape',
+      name: '葡萄',
+      latinName: 'Vitis vinifera',
+      lifeType: 'perennial',
+      category: 'fruit',
+      difficulty: 3,
+      familyUse: 5,
+      yieldLevel: 4,
+      harvestDaysMin: 365,
+      harvestDaysMax: 730,
+      containerFriendly: true,
+      recommendedStartMethod: 'nursery_plant',
+      startMethodNote: '葡萄建议直接买 1-2 年生苗或扦插苗，当年即可见成株',
+      waterloggingSensitivity: 3,
+      acidityNeed: 'slightly_acid',
+      requiresAcidification: false,
+      ...GOV, version: 1,
+    },
+  });
+
+  const [grapeVar1, grapeVar2] = await Promise.all([
+    prisma.variety.create({
+      data: {
+        id: 'var-grape-shine-muscat', cropId: grape.id, name: '阳光玫瑰',
+        maturePeriod: 'mid', plantHabit: 'vigorous', containerFit: 4, ...GOV, version: 1,
+      },
+    }),
+    prisma.variety.create({
+      data: {
+        id: 'var-grape-kyoho', cropId: grape.id, name: '巨峰',
+        maturePeriod: 'mid', plantHabit: 'vigorous', containerFit: 4, ...GOV, version: 1,
+      },
+    }),
+  ]);
+
+  // reuse the same attribute definitions (chill/heat/shade) for grape traits
+  const grapeChill = await prisma.attributeDefinition.findUnique({ where: { id: 'attr-chill-hours-min' } });
+  const grapeHeat = await prisma.attributeDefinition.findUnique({ where: { id: 'attr-heat-tolerance' } });
+  const grapeShade = await prisma.attributeDefinition.findUnique({ where: { id: 'attr-shade-tolerance' } });
+  await prisma.varietyTrait.createMany({
+    data: [
+      { varietyId: grapeVar1.id, attributeId: grapeChill!.id, valueNumber: 400, ...GOV },
+      { varietyId: grapeVar1.id, attributeId: grapeHeat!.id, valueNumber: 4, ...GOV },
+      { varietyId: grapeVar1.id, attributeId: grapeShade!.id, valueNumber: 2, ...GOV },
+      { varietyId: grapeVar2.id, attributeId: grapeChill!.id, valueNumber: 600, ...GOV },
+      { varietyId: grapeVar2.id, attributeId: grapeHeat!.id, valueNumber: 4, ...GOV },
+      { varietyId: grapeVar2.id, attributeId: grapeShade!.id, valueNumber: 3, ...GOV },
+    ],
+  });
+
+  await prisma.pollinationProfile.createMany({
+    data: [
+      {
+        varietyId: grapeVar1.id, sexType: 'hermaphrodite',
+        selfFertility: 'self_fertile', crossRequired: false,
+        bloomGroup: 'grape_early', notes: '阳光玫瑰自花结实能力强', ...GOV,
+      },
+      {
+        varietyId: grapeVar2.id, sexType: 'hermaphrodite',
+        selfFertility: 'self_fertile', crossRequired: false,
+        bloomGroup: 'grape_early', notes: '巨峰自花结实', ...GOV,
+      },
+    ],
+  });
+
+  await prisma.environmentRequirement.create({
+    data: {
+      id: 'envreq-grape', ownerType: 'crop', ownerId: grape.id,
+      minSunHours: 6, tempMin: -10, tempMax: 40,
+      optimalTempMin: 20, optimalTempMax: 32, frostSensitive: false,
+      ...GOV,
+    },
+  });
+
+  await prisma.containerRequirement.create({
+    data: {
+      id: 'ctreq-grape-crop', cropId: grape.id, varietyId: null,
+      minVolumeL: 30, preferredVolumeMinL: 40, preferredVolumeMaxL: 60,
+      minDepthCm: 45, minWidthCm: null,
+      minDrainageLevel: 3, minAerationLevel: 3,
+      preferredContainerTypeIds: [fabricBag.id, clayPot.id],
+      avoidContainerTypeIds: [],
+      supportRequired: true, repotYears: 2,
+      reason: '葡萄根系深、长势强，建议 40L 以上深盆并需要搭架支撑',
+      ...GOV,
+    },
+  });
+
+  // grape material rules reuse existing materials (data-driven, no if-crop code)
+  await prisma.materialCropRule.createMany({
+    data: [
+      { cropId: grape.id, materialId: peat.id, level: 'allowed', reason: '葡萄喜透气排水，泥炭可用作部分基础基质', ...GOV },
+      { cropId: grape.id, materialId: coco.id, level: 'allowed', reason: '椰糠透气保水，葡萄可用', ...GOV },
+      { cropId: grape.id, materialId: perlite.id, level: 'recommended', reason: '珍珠岩保证排水透气', ...GOV },
+      { cropId: grape.id, materialId: pineBark.id, level: 'allowed', reason: '松鳞可提供透气与有机质', ...GOV },
+      { cropId: grape.id, materialId: vermiculite.id, level: 'allowed', reason: '蛭石保水，适量即可', ...GOV },
+      { cropId: grape.id, materialId: pineSoil.id, level: 'allowed', reason: '松针土偏酸，少量可用', ...GOV },
+      { cropId: grape.id, materialId: sand.id, level: 'caution', reason: '粗沙沉重易板结，比例不宜高', ...GOV },
+      { cropId: grape.id, materialId: gardenSoil.id, level: 'avoid', reason: '园土易板结积水，不适合葡萄盆栽', ...GOV },
+    ],
+  });
+
+  const grapeTemplate = await prisma.soilRecipeTemplate.create({
+    data: {
+      id: 'soil-tpl-grape', cropId: grape.id, varietyId: null,
+      baseVolumeL: 50, isFallback: false,
+      targetProperties: { drainage: [3.0, 4.2], aeration: [2.8, 4.0], retention: [2.2, 3.4] },
+      ...GOV,
+    },
+  });
+  await prisma.soilRecipeSlot.createMany({
+    data: [
+      { templateId: grapeTemplate.id, functionGroup: 'base', minPct: 40, maxPct: 60, required: true, preferredMaterials: [peat.id, coco.id] },
+      { templateId: grapeTemplate.id, functionGroup: 'drainage', minPct: 20, maxPct: 35, required: true, preferredMaterials: [perlite.id] },
+      { templateId: grapeTemplate.id, functionGroup: 'organic', minPct: 10, maxPct: 25, required: true, preferredMaterials: [pineBark.id, pineSoil.id] },
+      { templateId: grapeTemplate.id, functionGroup: 'retention', minPct: 0, maxPct: 15, required: false, preferredMaterials: [vermiculite.id] },
+    ],
+  });
+
+  const grapeFallback = await prisma.soilRecipeTemplate.create({
+    data: {
+      id: 'soil-tpl-grape-fallback', cropId: grape.id, varietyId: null,
+      baseVolumeL: 50, isFallback: true,
+      targetProperties: { drainage: [2.5, 4.5], aeration: [2.5, 4.5], retention: [2.0, 3.5] },
+      ...GOV,
+    },
+  });
+  await prisma.soilRecipeSlot.createMany({
+    data: [
+      { templateId: grapeFallback.id, functionGroup: 'base', minPct: 35, maxPct: 65, required: true, preferredMaterials: [peat.id, coco.id] },
+      { templateId: grapeFallback.id, functionGroup: 'drainage', minPct: 15, maxPct: 40, required: true, preferredMaterials: [perlite.id] },
+      { templateId: grapeFallback.id, functionGroup: 'organic', minPct: 5, maxPct: 30, required: true, preferredMaterials: [pineBark.id, pineSoil.id] },
+      { templateId: grapeFallback.id, functionGroup: 'retention', minPct: 0, maxPct: 20, required: false, preferredMaterials: [vermiculite.id] },
+    ],
+  });
+
+  // lifecycle templates (Slice 2): crop-level generic + variety-level override.
+  // Fixture stage offsets are synthetic for test only (S2-AC-08..12 / AC §15).
+  const grapeLifecycleCropV1 = await prisma.lifecycleTemplate.create({
+    data: {
+      id: 'lc-grape-crop-v1', cropId: grape.id, varietyId: null,
+      startMethod: 'nursery_plant', version: 1, active: true, ...GOV,
+    },
+  });
+  await prisma.lifecycleStage.createMany({
+    data: [
+      { lifecycleTemplateId: grapeLifecycleCropV1.id, stageKey: 'stage_a', stageName: '定植初期', order: 1, startOffset: 0, endOffset: 2, actions: ['action_fixture_1'], explanation: '定植后浇透水', ...GOV },
+      { lifecycleTemplateId: grapeLifecycleCropV1.id, stageKey: 'stage_b', stageName: '缓苗期', order: 2, startOffset: 3, endOffset: 5, actions: ['action_fixture_2', 'action_fixture_3'], explanation: '保持土壤湿润，遮阴缓苗', ...GOV },
+    ],
+  });
+
+  const grapeLifecycleKyohoV1 = await prisma.lifecycleTemplate.create({
+    data: {
+      id: 'lc-grape-kyoho-v1', cropId: grape.id, varietyId: grapeVar2.id,
+      startMethod: 'nursery_plant', version: 1, active: true, ...GOV,
+    },
+  });
+  await prisma.lifecycleStage.createMany({
+    data: [
+      { lifecycleTemplateId: grapeLifecycleKyohoV1.id, stageKey: 'kyoho_a', stageName: '巨峰定植初期', order: 1, startOffset: 0, endOffset: 1, actions: ['action_fixture_1'], explanation: '巨峰苗定植浇透水', ...GOV },
+      { lifecycleTemplateId: grapeLifecycleKyohoV1.id, stageKey: 'kyoho_b', stageName: '巨峰缓苗期', order: 2, startOffset: 2, endOffset: 3, actions: ['action_fixture_2'], explanation: '巨峰缓苗', ...GOV },
+    ],
+  });
+
   console.log('Seed done.');
-  console.log('  crop: 蓝莓 / varieties: 奥尼尔, 薄雾, 北蓝');
+  console.log('  crop: 蓝莓, 葡萄 / grape varieties: 阳光玫瑰, 巨峰');
   console.log('  containers: 塑料盆, 陶土盆, 无纺布美植袋');
   console.log('  materials: 泥炭, 椰糠, 珍珠岩, 松鳞, 蛭石, 松针土, 粗沙(caution), 园土(avoid)');
+  console.log('  lifecycle: grape crop-level v1 + kyoho variety-level v1 (fixture offsets)');
   console.log('  ALL ROWS ARE reviewStatus=draft DEV_FIXTURE — NOT APPROVED CONTENT');
 }
 

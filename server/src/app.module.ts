@@ -8,6 +8,7 @@ import { CatalogModule } from './catalog/catalog.module';
 import { MaterialModule } from './materials/material.module';
 import { RecommendationModule } from './recommendations/recommendation.module';
 import { SoilModule } from './soil/soil.module';
+import { PlantingsModule } from './plantings/plantings.module';
 import { AuthGuard } from './auth/auth.guard';
 
 @Module({
@@ -23,6 +24,7 @@ import { AuthGuard } from './auth/auth.guard';
     MaterialModule,
     RecommendationModule,
     SoilModule,
+    PlantingsModule,
   ],
   providers: [
     { provide: APP_GUARD, useExisting: AuthGuard },

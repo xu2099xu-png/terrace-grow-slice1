@@ -32,6 +32,9 @@ server/prisma/generated/
 
 # Testing
 coverage/
+test-results/
+playwright-report/
+*.last-run.json
 
 # Temporary files
 tmp/
