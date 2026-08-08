@@ -161,11 +161,11 @@ describe('soil-engine', () => {
     const r = calculateSoilMix({ ...baseInput, ownedMaterialIds: ALL.map((m) => m.id), phManagementNote: '蓝莓喜酸，pH 管理建议见种植指南' });
     expect(r.ph_management_note).toBeTruthy();
     expect(r.ph_management_note).toContain('pH');
-    // acidifying materials present (peat+bark) → no extra acidification flag
-    expect(r.need_acidification).toBe(false);
+    // acidifying materials present (peat+bark) → fact field reflects that
+    expect(r.has_acidifying_component).toBe(true);
   });
 
-  it('酸性材料不足时 need_acidification=true', () => {
+  it('配方不含酸性材料时 has_acidifying_component=false，且不虚构“已调酸”判断', () => {
     // only coco (non-acidifying) as base preferred, no bark in organic slot
     const input: SoilEngineInput = {
       ...baseInput,
@@ -177,7 +177,8 @@ describe('soil-engine', () => {
       ],
     };
     const r = calculateSoilMix(input);
-    expect(r.need_acidification).toBe(true);
-    expect(r.reasons.some((x) => x.includes('调酸'))).toBe(true);
+    expect(r.has_acidifying_component).toBe(false);
+    // We no longer claim “已经不需要调酸”; only the fact is reported.
+    expect(r.reasons.some((x) => x.includes('不含酸性材料'))).toBe(true);
   });
 });

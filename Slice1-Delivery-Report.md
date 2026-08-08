@@ -2,7 +2,8 @@
 
 > 报告日期：2026-08-08  
 > 基线版本：系统架构设计 v1.4（冻结）  
-> 范围：仅 Slice 1（蓝莓），不包含 Slice 2–5（葡萄、无花果、猕猴桃等）。
+> 范围：仅 Slice 1（蓝莓），不包含 Slice 2–5（葡萄、无花果、猕猴桃等）。  
+> 本轮：**第三轮审计返工**（2026-08-08），对应 commit SHA 见 §5.7。
 
 ---
 
@@ -188,9 +189,90 @@ terrace-grow/
 
 ---
 
+## 5.7 第三轮审计返工修复记录（2026-08-08）
+
+根据第三方（ChatGPT）审计反馈，按用户锁定的 10 项 AC 清单完成第三轮返工。本次先锁定验收口径，先修测试骨架，再写红测，最后修绿，并完成 clean-room reproduction。
+
+### 5.7.1 阻断项修复
+
+| # | 阻断项 | 修复 |
+|---|--------|------|
+| 1 | 治理过滤未封死，嵌套农业事实（traits/attribute/envReq/cropRules/containerRequirements/substitutions）未同步过滤 | 新建 `src/agri-data.service.ts` 统一数据访问层（GovernedRepository）。所有进入引擎/公开 API 的农业事实查询收敛到该 service；嵌套关系（traits、attribute、environmentRequirement、cropRules、containerRequirements、substitutions）全部应用治理过滤；无 `reviewStatus` 字段的 model（WaterRiskConfig、SoilRecipeSlot、SunLevelMap、ClimateZone 等）一律不套 filter。`GovernanceService.hasReviewStatus` 修正错误列表（移除无 reviewStatus 的 EvidenceSource）。新增 `test/governance.spec.ts` 验证 production 下 draft 父记录与嵌套子记录均不泄漏 |
+| 2 | `rainExposed` 后端非必答，缺省 `?? false` | `TerraceController.upsert` 将 `rainExposed` 改为 required boolean，`typeof !== 'boolean'` 时抛 400（`BadRequestException`），移除 `?? false`。新增 AC 测试：缺字段返回 400；H5 `TerraceWizard` 移除 `rainExposed.value ?? false` 兜底（step 4 已是必答） |
+| 3 | 未知城市仍取 `ranked[0]` 伪造品种选择 | `buildPerennialPlan` 检测未知气候区（`chillHoursEstimate=0 || heatLevel=0`）时：`selected_variety_id=null`、warnings 明确"气候信息不足"，授粉不基于品种，容器回落到作物级（不偷偷用品种级 override）；仍给出作物级容器/配土建议。测试断言 `selected_variety_id=null` + warning |
+| 4 | `/soil/calculate` 丢失品种级容器规格，与主方案两套口径 | `SoilController` 请求新增 `selected_variety_id`，改用 `recommendContainer(..., varietyId)`（与 `buildPerennialPlan` 同一函数同一逻辑）计算 `volumeL`，不再对全部 containerReqs 取 max/min。测试验证：北蓝品种级 20-30L（中值 25L），主方案与重算 mix 总升数一致 |
+| 5 | 标准测试命令不执行 `integration.spec.ts`；README/报告数字不一致 | `server/package.json` 拆分 `test:unit` / `test:integration` / `test:e2e` / `test:h5`，总入口 `test:all` 串全部；`integration.spec.ts`、`governance.spec.ts` 真实被执行；任一失败 `test:all` 非 0。README 同步更新 |
+| 6 | clean-room 未验证 migration（只 `db push`） | 提供 `db:migrate = prisma migrate deploy`；`test-db.js reset` 走 drop → create → `migrate deploy` → seed；clean-room 复现（见 §5.7.4）在空库执行 migration 成功（26 表） |
+| 7 | H5 对 NO_MATCH 未短路，仍显示空容器/配土卡与"调整材料"按钮 | `PerennialPlan.vue` 在 `suitability==='unsuitable'` 时仅渲染"为什么暂不推荐 + 下一步"，隐藏品种/授粉/容器/配土/材料调整；新增 `PerennialPlan.spec.ts`（vitest + @vue/test-utils + happy-dom）组件测试验证真实 DOM 行为：NO_MATCH 无容器/配土/材料按钮，MATCH 正常显示 |
+| — | `material.controller.ts` 硬编码 `cropId:'crop-blueberry'` | 删除硬编码：`GET /materials` 接受 `crop_id` 查询参数（显式输入上下文）；`cropRules` 按 cropId 过滤或返回带 cropId 归属的 approved 规则；新增测试验证 `crop_id=crop-grape-future` 时 rule 为空 |
+| — | 死代码：旧 `fallbackMix()`（含 `[0,5]` wide targets）、solver L3 过时注释、未使用 `acidLackPenalty` | 全部删除；solver 注释改为"L3 使用 reviewed fallback template，unavailable 由 caller 决定" |
+| — | `need_acidification = requiresAcidification && acidPct===0` 语义过强 | 改为事实字段 `has_acidifying_component`（是否含酸性材料），不再推导"已不需要调酸"；`ph_management_note` 始终按作物规则展示；单测同步更新 |
+
+### 5.7.2 测试骨架与隔离（AC 1–2）
+
+- **测试入口**：`test:unit`（vitest src/ 纯函数）、`test:integration`（vitest test/，API + 治理）、`test:e2e`（supertest 全链路，编译产物）、`test:h5`（前端组件测试）；`test:all` 一条命令串全部，任一失败返回非 0。
+- **测试库隔离**：新增 `server/scripts/test-db.js`，管理独立 `terrace_grow_test` 数据库。`test:all` 先执行 `db:test:setup`（drop → create → `prisma migrate deploy` → seed），测试永不触碰开发库。测试进程通过 `TEST_DATABASE_URL` / vitest env 指向测试库。
+- **串行执行**：`vitest.config.ts` 设 `fileParallelism: false`，避免共享测试库时 integration/governance 互相干扰。
+
+### 5.7.3 AC 测试清单（先红后绿）
+
+| AC | 场景 | 位置 |
+|----|------|------|
+| 3 | production + draft fixture 不泄漏（父+嵌套子记录） | `test/governance.spec.ts`（7 例） |
+| 3 | approved 父带 draft envReq/traits 不泄漏 | `test/governance.spec.ts` |
+| 4 | 缺 `rainExposed` 返回 400 | `integration.spec.ts` #2b、`integration-e2e.js` #2b |
+| 5 | 未知城市 `selected_variety_id=null` | `integration.spec.ts` #13、`integration-e2e.js` #10b |
+| 6 | NO_MATCH 页面不显示容器/配土/材料操作（真实 DOM） | `h5/src/views/PerennialPlan.spec.ts`（2 例） |
+| 7 | soil recalc 保留品种级 container requirement（25L） | `integration.spec.ts` #14、`integration-e2e.js` #11b |
+| 8 | 不同 cropId 不读蓝莓规则 | `integration.spec.ts` #15、`integration-e2e.js` #11c |
+| 9 | 空库 `migrate deploy` 成功 | clean-room 复现（见下） |
+
+### 5.7.4 Clean-room Reproduction（逐条命令与结果）
+
+环境：本机 macOS / Node v22.22.2 / npm 10.9.7 / Docker PostgreSQL 16（terrace-grow-postgres, 5433）。
+
+```
+# 1) 依赖安装（lockfile 精确）
+npm ci                          → ok（root, 0 vulnerabilities）
+npm --prefix server ci          → ok
+npm --prefix h5 ci              → ok（含 vitest/@vue/test-utils/happy-dom）
+
+# 2) 测试数据库：drop → create → prisma migrate deploy → seed
+npm --prefix server run db:test:setup
+    → "Applying migration 20260808103335_init"
+    → "All migrations have been successfully applied."
+    → "Seed done."（DEV_FIXTURE, draft）
+
+# 3) 全量测试
+npm run test:all
+    → test:unit        24 passed（soil-engine 9 + recommend-engine 15）
+    → test:integration 23 passed（integration 16 + governance 7）
+    → test:e2e         "All integration tests passed!"
+    → test:h5          2 passed（PerennialPlan.vue NO_MATCH/MATCH）
+
+# 4) 构建
+npm --prefix server run build    → tsc, 0 errors
+npm --prefix h5 run build        → vite build, ok
+
+# 5) clean-room migrate deploy（独立空库验证）
+CREATE DATABASE terrace_grow_cleanroom
+DATABASE_URL=...terrace_grow_cleanroom npx prisma migrate deploy
+    → "All migrations have been successfully applied."
+    → 26 tables in public schema（后已 drop 清理）
+```
+
+> 测试总数：单元 24 + 集成 23 + E2E（supertest 全链路）+ H5 组件 2。
+> 集成测试在独立 `terrace_grow_test` 库上运行，与开发库 `terrace_grow` 完全隔离。
+
+### 5.7.5 交付时对应 commit
+
+本报告 §5.7 对应 git commit SHA：见提交时生成的 commit hash（提交信息前缀 `Slice 1: Third-round audit rework — ...`）。
+
+---
+
 ## 6. 已知局限与待办
 
-1. **浏览器自动化**：当前 E2E 使用 `curl` 验证 H5 proxy + API。如需要真正的浏览器自动化（Playwright / Puppeteer），可在后续切片引入相应 skill 和测试套件。
+1. **浏览器自动化**：第三轮已引入 H5 组件测试（vitest + @vue/test-utils + happy-dom）覆盖真实页面 DOM 行为（NO_MATCH 短路等）。如需要完整的浏览器级自动化（Playwright / Puppeteer 真实渲染），可在后续切片引入相应 skill 和测试套件。
 2. **视觉打磨**：H5 使用 Vant 默认样式，未做定制主题和交互动画。按 v1.4 要求，视觉为次要优先级，功能正确优先。
 3. **城市选择**：当前 TerraceWizard 使用文本输入城市拼音。后续可接入城市级联选择器或地理定位。
 4. **品种图与容器图**：未引入图片资源，后续补充。

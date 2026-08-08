@@ -26,89 +26,104 @@
         </van-cell>
       </van-cell-group>
 
-      <!-- 推荐品种 -->
-      <van-cell-group inset title="推荐品种">
-        <van-cell v-for="v in plan.recommended_varieties" :key="v.varietyId">
-          <template #title>
-            {{ v.name }} <van-tag v-if="v.varietyId === plan.selected_variety_id" type="primary">已选</van-tag>
-          </template>
-          <template #label>
-            <div v-if="v.traits">
-              需冷量: {{ v.traits.chill_hours_min ?? '—' }}h · 耐热: {{ v.traits.heat_tolerance ?? '—' }} · 耐阴: {{ v.traits.shade_tolerance ?? '—' }}
-            </div>
-            <div v-if="v.reasons.length" class="reasons">
-              <p v-for="r in v.reasons" :key="r" class="reason">· {{ r }}</p>
-            </div>
-          </template>
-        </van-cell>
-      </van-cell-group>
+      <!-- NO_MATCH / unsuitable：完整短路，只展示原因 + 下一步 -->
+      <template v-if="isUnsuitable">
+        <van-cell-group inset title="为什么暂不推荐">
+          <van-cell :title="plan.next_action" />
+        </van-cell-group>
+      </template>
 
-      <!-- 授粉 -->
-      <van-cell-group inset title="授粉" v-if="plan.pollination">
-        <van-cell title="需异株授粉" :value="plan.pollination.need_two ? '是' : '否'" />
-        <van-cell v-if="plan.pollination.recommended_partners.length" title="推荐搭档">
-          <template #label>
-            <p v-for="p in plan.pollination.recommended_partners" :key="p.id">{{ p.name }}</p>
-          </template>
-        </van-cell>
-        <van-cell v-if="plan.pollination.note" :title="plan.pollination.note" />
-      </van-cell-group>
+      <!-- 正常方案 -->
+      <template v-else>
+        <!-- 推荐品种 -->
+        <van-cell-group inset title="推荐品种">
+          <van-cell v-for="v in plan.recommended_varieties" :key="v.varietyId">
+            <template #title>
+              {{ v.name }} <van-tag v-if="v.varietyId === plan.selected_variety_id" type="primary">已选</van-tag>
+            </template>
+            <template #label>
+              <div v-if="v.traits">
+                需冷量: {{ v.traits.chill_hours_min ?? '—' }}h · 耐热: {{ v.traits.heat_tolerance ?? '—' }} · 耐阴: {{ v.traits.shade_tolerance ?? '—' }}
+              </div>
+              <div v-if="v.reasons.length" class="reasons">
+                <p v-for="r in v.reasons" :key="r" class="reason">· {{ r }}</p>
+              </div>
+            </template>
+          </van-cell>
+          <van-cell v-if="!plan.selected_variety_id" title="暂无法可靠推荐品种">
+            <template #label>
+              <p class="reason">气候信息不足，暂不指定具体品种；下方仍给出作物级容器与配土建议。</p>
+            </template>
+          </van-cell>
+        </van-cell-group>
 
-      <!-- 容器 -->
-      <van-cell-group inset title="容器建议">
-        <van-cell title="首选类型" :value="containerLabel" />
-        <van-cell title="建议容积" :value="containerVolume" />
-        <van-cell title="换盆周期" :value="plan.container?.repotNote || '—'" />
-        <van-cell v-if="plan.container" title="切换容器">
-          <template #label>
-            <van-radio-group v-model="selectedContainerId" direction="horizontal" @change="onContainerChange">
-              <van-radio v-for="t in plan.container.preferredTypes" :key="t.id" :name="t.id">{{ t.name }}</van-radio>
-              <van-radio v-for="t in plan.container.acceptableTypes" :key="t.id" :name="t.id">{{ t.name }}</van-radio>
-            </van-radio-group>
-          </template>
-        </van-cell>
-      </van-cell-group>
+        <!-- 授粉 -->
+        <van-cell-group inset title="授粉" v-if="plan.pollination && plan.selected_variety_id">
+          <van-cell title="需异株授粉" :value="plan.pollination.need_two ? '是' : '否'" />
+          <van-cell v-if="plan.pollination.recommended_partners.length" title="推荐搭档">
+            <template #label>
+              <p v-for="p in plan.pollination.recommended_partners" :key="p.id">{{ p.name }}</p>
+            </template>
+          </van-cell>
+          <van-cell v-if="plan.pollination.note" :title="plan.pollination.note" />
+        </van-cell-group>
 
-      <!-- 配土 -->
-      <van-cell-group inset title="配土方案">
-        <van-cell v-if="plan.soil_mix">
-          <template #title>
-            <strong>{{ plan.soil_mix.feasibility }}</strong>
-          </template>
-          <template #label>
-            <p v-if="plan.soil_mix.mix.length">配比（{{ plan.soil_mix.mix[0]?.liters ? '约' : '' }}{{ totalLiters }}L）：</p>
-            <p v-for="m in plan.soil_mix.mix" :key="m.material">{{ m.material }} {{ m.pct }}%（{{ m.liters }}L）</p>
-            <p v-if="plan.soil_mix.substitutions_applied.length" class="sub">替代：{{ plan.soil_mix.substitutions_applied.map(s => `${s.from}→${s.to}`).join('、') }}</p>
-            <p v-if="plan.soil_mix.need_acidification">需要额外调酸</p>
-            <p v-if="plan.soil_mix.ph_management_note" class="sub">{{ plan.soil_mix.ph_management_note }}</p>
-          </template>
-        </van-cell>
-        <van-cell v-if="plan.missing_materials.length" title="还缺材料">
-          <template #label>
-            <span v-for="m in plan.missing_materials" :key="m.material" class="missing">{{ m.material }}（{{ m.liters }}L）</span>
-          </template>
-        </van-cell>
-      </van-cell-group>
+        <!-- 容器 -->
+        <van-cell-group inset title="容器建议">
+          <van-cell title="首选类型" :value="containerLabel" />
+          <van-cell title="建议容积" :value="containerVolume" />
+          <van-cell title="换盆周期" :value="plan.container?.repotNote || '—'" />
+          <van-cell v-if="plan.container" title="切换容器">
+            <template #label>
+              <van-radio-group v-model="selectedContainerId" direction="horizontal" @change="onContainerChange">
+                <van-radio v-for="t in plan.container.preferredTypes" :key="t.id" :name="t.id">{{ t.name }}</van-radio>
+                <van-radio v-for="t in plan.container.acceptableTypes" :key="t.id" :name="t.id">{{ t.name }}</van-radio>
+              </van-radio-group>
+            </template>
+          </van-cell>
+        </van-cell-group>
 
-      <!-- 浇水风险 -->
-      <van-cell-group inset title="浇水风险" v-if="plan.water_risk">
-        <van-cell title="风险等级" :value="plan.water_risk.level" />
-        <van-cell v-if="plan.water_risk.mitigation.length" title="缓解建议">
-          <template #label>
-            <p v-for="m in plan.water_risk.mitigation" :key="m">· {{ m }}</p>
-          </template>
-        </van-cell>
-      </van-cell-group>
+        <!-- 配土 -->
+        <van-cell-group inset title="配土方案">
+          <van-cell v-if="plan.soil_mix">
+            <template #title>
+              <strong>{{ plan.soil_mix.feasibility }}</strong>
+            </template>
+            <template #label>
+              <p v-if="plan.soil_mix.mix.length">配比（{{ totalLiters }}L）：</p>
+              <p v-for="m in plan.soil_mix.mix" :key="m.material">{{ m.material }} {{ m.pct }}%（{{ m.liters }}L）</p>
+              <p v-if="plan.soil_mix.substitutions_applied.length" class="sub">替代：{{ plan.soil_mix.substitutions_applied.map(s => `${s.from}→${s.to}`).join('、') }}</p>
+              <p v-if="!plan.soil_mix.has_acidifying_component" class="sub">配方中不含酸性材料</p>
+              <p v-if="plan.soil_mix.ph_management_note" class="sub">{{ plan.soil_mix.ph_management_note }}</p>
+            </template>
+          </van-cell>
+          <van-cell v-if="plan.missing_materials.length" title="还缺材料">
+            <template #label>
+              <span v-for="m in plan.missing_materials" :key="m.material" class="missing">{{ m.material }}（{{ m.liters }}L）</span>
+            </template>
+          </van-cell>
+        </van-cell-group>
 
-      <!-- 下一步 -->
-      <van-cell-group inset title="下一步">
-        <van-cell :title="plan.next_action" />
-      </van-cell-group>
+        <!-- 浇水风险 -->
+        <van-cell-group inset title="浇水风险" v-if="plan.water_risk">
+          <van-cell title="风险等级" :value="plan.water_risk.level" />
+          <van-cell v-if="plan.water_risk.mitigation.length" title="缓解建议">
+            <template #label>
+              <p v-for="m in plan.water_risk.mitigation" :key="m">· {{ m }}</p>
+            </template>
+          </van-cell>
+        </van-cell-group>
 
-      <!-- 材料调整 -->
-      <div class="actions">
-        <van-button type="primary" block round @click="showMaterials = true">查看/调整我的材料</van-button>
-      </div>
+        <!-- 下一步 -->
+        <van-cell-group inset title="下一步">
+          <van-cell :title="plan.next_action" />
+        </van-cell-group>
+
+        <!-- 材料调整 -->
+        <div class="actions">
+          <van-button type="primary" block round @click="showMaterials = true">查看/调整我的材料</van-button>
+        </div>
+      </template>
 
       <!-- 材料弹窗 -->
       <van-dialog
@@ -187,7 +202,7 @@ interface SoilResult {
   mix: MixLine[];
   missing: { materialId: string; material: string; liters: number; reason: string }[];
   substitutions_applied: { from: string; to: string; scope: string; note?: string }[];
-  need_acidification: boolean;
+  has_acidifying_component: boolean;
   ph_management_note: string | null;
   feasibility: 'optimal' | 'substituted' | 'relaxed' | 'fallback' | 'unavailable';
   water_retention_score: number;
@@ -254,6 +269,9 @@ const suitabilityClass = computed(() => {
   return 'bad';
 });
 
+/** NO_MATCH: full short-circuit — hide variety/pollination/container/soil/material-actions. */
+const isUnsuitable = computed(() => plan.value?.suitability === 'unsuitable');
+
 const containerLabel = computed(() => {
   const c = plan.value?.container;
   if (!c) return '—';
@@ -282,8 +300,8 @@ async function load() {
     plan.value = res.data;
     selectedContainerId.value = res.data.container?.selected_type_id || '';
 
-    // fetch materials for dialog
-    const matRes = await api.get('/materials');
+    // fetch materials for dialog (explicit crop context — no hardcoded crop)
+    const matRes = await api.get('/materials', { params: { crop_id: props.cropId } });
     materials.value = matRes.data;
     const mineRes = await api.get('/materials/mine');
     selectedMaterials.value = mineRes.data.map((m: any) => m.materialId);
@@ -300,8 +318,10 @@ async function onContainerChange() {
     const res = await api.post('/recommendations/perennial', {
       crop_id: props.cropId,
       selected_container_type_id: selectedContainerId.value,
+      selected_variety_id: plan.value.selected_variety_id || undefined,
     });
     plan.value = res.data;
+    selectedContainerId.value = res.data.container?.selected_type_id || '';
     showToast('已更新容器方案');
   } catch (e) {
     showToast('更新失败');
@@ -314,6 +334,7 @@ async function recalculateSoil() {
     const res = await api.post('/soil/calculate', {
       crop_id: props.cropId,
       container_type_id: plan.value?.container?.selected_type_id,
+      selected_variety_id: plan.value?.selected_variety_id || null,
       material_ids: selectedMaterials.value,
     });
     if (plan.value) {

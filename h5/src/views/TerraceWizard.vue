@@ -163,7 +163,7 @@ async function submit() {
     const payload: any = {
       name: '我的露台',
       cityCode: cityCode.value,
-      rainExposed: rainExposed.value ?? false,
+      rainExposed: rainExposed.value, // mandatory: step 4 cannot be skipped
     };
     if (sunExposureLevel.value && sunExposureLevel.value !== 'UNSURE') {
       payload.sunExposureLevel = sunExposureLevel.value;

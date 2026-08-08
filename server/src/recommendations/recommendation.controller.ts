@@ -1,6 +1,6 @@
 import { Controller, Post, Body, UseGuards } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { GovernanceService } from '../governance.service';
+import { AgriDataService } from '../agri-data.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { buildPerennialPlan, PlanInput } from '../engines/recommend-engine/plan';
@@ -14,7 +14,7 @@ import type { SoilEngineInput } from '../engines/soil-engine';
 export class RecommendationController {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly governance: GovernanceService,
+    private readonly agri: AgriDataService,
   ) {}
 
   @Post('perennial')
@@ -27,85 +27,47 @@ export class RecommendationController {
     },
   ) {
     const cropId = body.crop_id;
-    const reviewFilter = this.governance.reviewStatusFilter();
 
-    const profile = await this.prisma.terraceProfile.findFirst({ where: { userId } });
+    const profile = await this.agri.getTerraceProfile(userId);
     if (!profile) return { error: 'No terrace profile' };
 
     const zones = await this.prisma.climateZone.findMany();
     const zone = zones.find((z) => (z.cityCodes as string[]).includes(profile.cityCode)) || null;
 
-    const crop = await this.prisma.crop.findUnique({
-      where: { id: cropId, ...reviewFilter },
-    });
+    const crop = await this.agri.getCrop(cropId);
     if (!crop) return { error: 'Crop not found' };
 
-    const envReq = await this.prisma.environmentRequirement.findFirst({
-      where: { ownerId: cropId, ownerType: 'crop', ...reviewFilter },
-    });
+    const envReq = await this.agri.getCropEnvironmentRequirement(cropId);
 
-    const varieties = await this.prisma.variety.findMany({
-      where: { cropId, ...reviewFilter },
-      include: { traits: { include: { attribute: true } } },
-    });
+    const varieties = await this.agri.listVarieties(cropId);
 
-    const profiles = await this.prisma.pollinationProfile.findMany({
-      where: { varietyId: { in: varieties.map((v) => v.id) }, ...reviewFilter },
-    });
+    const profiles = await this.agri.getPollinationProfiles(varieties.map((v) => v.id));
 
-    const compat = await this.prisma.pollinationCompatibility.findMany({
-      where: { varietyId: { in: varieties.map((v) => v.id) }, ...reviewFilter },
-    });
+    const compat = await this.agri.getPollinationCompatibilities(varieties.map((v) => v.id));
 
-    const containerReqs = await this.prisma.containerRequirement.findMany({
-      where: { cropId, ...reviewFilter },
-    });
+    const containerReqs = await this.agri.getContainerRequirements(cropId);
 
-    const containerTypes = await this.prisma.containerType.findMany({
-      where: reviewFilter,
-    });
+    const containerTypes = await this.agri.listContainerTypes();
 
-    const materials = await this.prisma.substrateMaterial.findMany({
-      where: reviewFilter,
-    });
+    const materials = await this.agri.listMaterials();
 
-    const rules = await this.prisma.materialCropRule.findMany({
-      where: { cropId, ...reviewFilter },
-    });
+    const rules = await this.agri.getMaterialCropRules(cropId);
 
-    const substitutions = await this.prisma.materialSubstitution.findMany({
-      where: reviewFilter,
-    });
+    const substitutions = await this.agri.listMaterialSubstitutions();
 
-    const template = await this.prisma.soilRecipeTemplate.findFirst({
-      where: { cropId, isFallback: false, ...reviewFilter },
-    });
+    const template = await this.agri.getSoilRecipeTemplate(cropId, false);
 
-    const fallbackTemplate = await this.prisma.soilRecipeTemplate.findFirst({
-      where: { cropId, isFallback: true, ...reviewFilter },
-    });
+    const fallbackTemplate = await this.agri.getSoilRecipeTemplate(cropId, true);
 
-    const slots = template
-      ? await this.prisma.soilRecipeSlot.findMany({
-          where: { templateId: template.id },
-        })
-      : [];
+    const slots = template ? await this.agri.getSoilRecipeSlots(template.id) : [];
 
-    const fallbackSlots = fallbackTemplate
-      ? await this.prisma.soilRecipeSlot.findMany({
-          where: { templateId: fallbackTemplate.id },
-        })
-      : [];
+    const fallbackSlots = fallbackTemplate ? await this.agri.getSoilRecipeSlots(fallbackTemplate.id) : [];
 
     const waterRiskConfig = await this.prisma.waterRiskConfig.findMany();
 
-    const inventory = await this.prisma.userMaterialInventory.findMany({
-      where: { userId },
-    });
+    const inventory = await this.agri.getUserMaterialInventory(userId);
 
-    const modifiers = await this.prisma.containerModifier.findMany({
-      where: reviewFilter,
-    });
+    const modifiers = await this.agri.getContainerModifiers(containerTypes.map((t) => t.id));
 
     // ---- build PlanInput ----
     const varietyInputs: VarietyInput[] = varieties.map((v) => {

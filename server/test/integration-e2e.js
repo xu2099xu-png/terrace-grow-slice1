@@ -1,6 +1,10 @@
-// DEV_FIXTURE data requires APP_ENV=development AND ALLOW_DRAFT_FIXTURES=true
+// DEV_FIXTURE data requires APP_ENV=development AND ALLOW_DRAFT_FIXTURES=true.
+// Tests always run against the isolated test DB, never the dev DB.
 process.env.APP_ENV = 'development';
 process.env.ALLOW_DRAFT_FIXTURES = 'true';
+process.env.DATABASE_URL =
+  process.env.TEST_DATABASE_URL ||
+  'postgresql://terrace:terrace@localhost:5433/terrace_grow_test?schema=public';
 
 const { Test } = require('@nestjs/testing');
 const request = require('supertest');
@@ -29,10 +33,23 @@ async function run() {
       cityCode: 'beijing',
       sunOrientationRaw: 'south',
       sunTimeObsRaw: 'allday',
+      rainExposed: true,
     })
     .expect(201);
   if (res.body.sunHoursMin < 6) throw new Error(`sunHoursMin expected >=6, got ${res.body.sunHoursMin}`);
   if (res.body.sunConfidence !== 'medium') throw new Error('expected medium confidence');
+
+  // 2b. rainExposed is required at the API boundary
+  res = await request(app.getHttpServer())
+    .post('/api/terraces')
+    .set('Authorization', `Bearer ${token}`)
+    .send({
+      name: '缺字段露台',
+      cityCode: 'beijing',
+      sunExposureLevel: 'LONG',
+    })
+    .expect(400);
+  if (!String(res.body.message).includes('rainExposed')) throw new Error('expected rainExposed error message');
 
   // 3. get terrace profile
   res = await request(app.getHttpServer())
@@ -115,6 +132,7 @@ async function run() {
       cityCode: 'beijing',
       sunOrientationRaw: 'north',
       sunTimeObsRaw: 'unknown',
+      rainExposed: false,
     })
     .expect(201);
   if (res.body.sunHoursMin > 3) throw new Error(`expected low sunHoursMin, got ${res.body.sunHoursMin}`);
@@ -128,6 +146,30 @@ async function run() {
   if (res.body.suitability !== 'likely_unsuitable') throw new Error(`expected likely_unsuitable, got ${res.body.suitability}`);
   if (res.body.sunlight_status.status !== 'LIKELY_NO_MATCH') throw new Error(`expected LIKELY_NO_MATCH`);
   if (!res.body.warnings.includes('日照可能不足，建议先确认')) throw new Error('expected warning');
+
+  // 10b. unknown city: no fake variety selection
+  res = await request(app.getHttpServer())
+    .post('/api/auth/anonymous')
+    .send({ device_id: 'test-device-2b' })
+    .expect(201);
+  const token2b = res.body.token;
+  res = await request(app.getHttpServer())
+    .post('/api/terraces')
+    .set('Authorization', `Bearer ${token2b}`)
+    .send({
+      name: '未知城市露台',
+      cityCode: 'unknown_city_xyz',
+      sunExposureLevel: 'LONG',
+      rainExposed: false,
+    })
+    .expect(201);
+  res = await request(app.getHttpServer())
+    .post('/api/recommendations/perennial')
+    .set('Authorization', `Bearer ${token2b}`)
+    .send({ crop_id: 'crop-blueberry' })
+    .expect(201);
+  if (res.body.selected_variety_id !== null) throw new Error(`unknown-city selected_variety_id must be null, got ${res.body.selected_variety_id}`);
+  if (!res.body.warnings.some((w) => String(w).includes('气候信息不足'))) throw new Error('expected unknown-climate warning');
 
   // 11. BORDERLINE sunlight (east + morning)
   res = await request(app.getHttpServer())
@@ -144,6 +186,7 @@ async function run() {
       cityCode: 'beijing',
       sunOrientationRaw: 'west',
       sunTimeObsRaw: 'afternoon',
+      rainExposed: true,
     })
     .expect(201);
 
@@ -154,6 +197,48 @@ async function run() {
     .expect(201);
   if (res.body.suitability !== 'borderline') throw new Error(`expected borderline, got ${res.body.suitability}`);
   if (res.body.sunlight_status.status !== 'BORDERLINE') throw new Error(`expected BORDERLINE`);
+
+  // 11b. soil recalc keeps variety-level container requirement (northblue 20-30L)
+  res = await request(app.getHttpServer())
+    .post('/api/terraces')
+    .set('Authorization', `Bearer ${token3}`)
+    .send({
+      name: '品种级容器露台',
+      cityCode: 'beijing',
+      sunExposureLevel: 'LONG',
+      rainExposed: false,
+    })
+    .expect(201);
+  res = await request(app.getHttpServer())
+    .post('/api/recommendations/perennial')
+    .set('Authorization', `Bearer ${token3}`)
+    .send({ crop_id: 'crop-blueberry', selected_variety_id: 'var-northblue' })
+    .expect(201);
+  if (res.body.container.volumeRange[0] !== 20 || res.body.container.volumeRange[1] !== 30) {
+    throw new Error('expected northblue variety-level container 20-30L');
+  }
+  res = await request(app.getHttpServer())
+    .post('/api/soil/calculate')
+    .set('Authorization', `Bearer ${token3}`)
+    .send({
+      crop_id: 'crop-blueberry',
+      container_type_id: 'ct-fabric-bag',
+      selected_variety_id: 'var-northblue',
+      material_ids: ['mat-peat', 'mat-coco', 'mat-perlite'],
+    })
+    .expect(201);
+  const totalLiters = res.body.soil.mix.reduce((s, m) => s + m.liters, 0);
+  if (Math.round(totalLiters) !== 25) throw new Error(`expected 25L for northblue recalc, got ${totalLiters}`);
+
+  // 11c. materials for a different cropId do not return blueberry rules
+  res = await request(app.getHttpServer())
+    .get('/api/materials?crop_id=crop-grape-future')
+    .set('Authorization', `Bearer ${token3}`)
+    .expect(200);
+  if (res.body.length === 0) throw new Error('expected materials list');
+  for (const m of res.body) {
+    if (m.cropRules.length !== 0) throw new Error(`cropRules must be empty for other crop, got ${JSON.stringify(m.cropRules)}`);
+  }
 
   console.log('All integration tests passed!');
   await app.close();

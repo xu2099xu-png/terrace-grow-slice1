@@ -45,11 +45,25 @@ describe('Slice 1 Integration', () => {
         cityCode: 'beijing',
         sunOrientationRaw: 'south',
         sunTimeObsRaw: 'allday',
+        rainExposed: true,
       })
       .expect(201);
 
     expect(res.body.sunHoursMin).toBeGreaterThanOrEqual(6);
     expect(res.body.sunConfidence).toBe('medium');
+  });
+
+  it('2b. POST /terraces without rainExposed returns 400 (required field)', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/terraces')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: '缺字段露台',
+        cityCode: 'beijing',
+        sunExposureLevel: 'LONG',
+      })
+      .expect(400);
+    expect(res.body.message).toContain('rainExposed');
   });
 
   it('3. get terrace profile', async () => {
@@ -147,9 +161,10 @@ describe('Slice 1 Integration', () => {
       .set('Authorization', `Bearer ${token2}`)
       .send({
         name: '北向露台',
-        cityCode: '110100',
+        cityCode: 'beijing',
         sunOrientationRaw: 'north',
         sunTimeObsRaw: 'unknown',
+        rainExposed: false,
       })
       .expect(201);
 
@@ -167,7 +182,7 @@ describe('Slice 1 Integration', () => {
     expect(rec.body.warnings).toContain('日照可能不足，建议先确认');
   });
 
-  it('11. BORDERLINE sunlight (4-6h)', async () => {
+  it('11. BORDERLINE sunlight (west + afternoon = 3-6h)', async () => {
     const auth3 = await request(app.getHttpServer())
       .post('/api/auth/anonymous')
       .send({ device_id: 'test-device-3' })
@@ -179,10 +194,11 @@ describe('Slice 1 Integration', () => {
       .post('/api/terraces')
       .set('Authorization', `Bearer ${token3}`)
       .send({
-        name: '东向露台',
-        cityCode: '110100',
-        sunOrientationRaw: 'east',
-        sunTimeObsRaw: 'morning',
+        name: '西向露台',
+        cityCode: 'beijing',
+        sunOrientationRaw: 'west',
+        sunTimeObsRaw: 'afternoon',
+        rainExposed: true,
       })
       .expect(201);
 
@@ -264,5 +280,73 @@ describe('Slice 1 Integration', () => {
     expect(rec.body.recommended_varieties.length).toBeGreaterThan(0);
     expect(rec.body.recommended_varieties.every((v: any) => v.score === 0)).toBe(true);
     expect(rec.body.recommended_varieties[0].reasons.some((r: string) => r.includes('气候区未知'))).toBe(true);
+    // MUST NOT fake a selection from the zero-score list
+    expect(rec.body.selected_variety_id).toBeNull();
+    expect(rec.body.warnings.some((w: string) => w.includes('气候信息不足'))).toBe(true);
+    // crop-level container advice may still be present
+    expect(rec.body.container).toBeDefined();
+  });
+
+  it('14. soil recalculate keeps variety-level container requirement (northblue 20-30L)', async () => {
+    const auth6 = await request(app.getHttpServer())
+      .post('/api/auth/anonymous')
+      .send({ device_id: 'test-device-6' })
+      .expect(201);
+    const token6 = auth6.body.token;
+
+    await request(app.getHttpServer())
+      .post('/api/terraces')
+      .set('Authorization', `Bearer ${token6}`)
+      .send({
+        name: '品种级容器露台',
+        cityCode: 'beijing',
+        sunExposureLevel: 'LONG',
+        rainExposed: false,
+      })
+      .expect(201);
+
+    // select northblue explicitly; crop-level range is 25-40L, northblue override is 20-30L
+    const plan = await request(app.getHttpServer())
+      .post('/api/recommendations/perennial')
+      .set('Authorization', `Bearer ${token6}`)
+      .send({ crop_id: 'crop-blueberry', selected_variety_id: 'var-northblue' })
+      .expect(201);
+    expect(plan.body.selected_variety_id).toBe('var-northblue');
+    const planVol = plan.body.container.volumeRange;
+    expect(planVol[0]).toBe(20);
+    expect(planVol[1]).toBe(30);
+
+    // recalc must reuse the SAME variety-level container requirement
+    const recalc = await request(app.getHttpServer())
+      .post('/api/soil/calculate')
+      .set('Authorization', `Bearer ${token6}`)
+      .send({
+        crop_id: 'crop-blueberry',
+        container_type_id: 'ct-fabric-bag',
+        selected_variety_id: 'var-northblue',
+        material_ids: ['mat-peat', 'mat-coco', 'mat-perlite'],
+      })
+      .expect(201);
+    // volume basis matches plan (20-30L midpoint = 25L)
+    const totalLiters = recalc.body.soil.mix.reduce((s: number, m: any) => s + m.liters, 0);
+    expect(Math.round(totalLiters)).toBe(25);
+  });
+
+  it('15. materials for a different cropId do not return blueberry rules', async () => {
+    const auth7 = await request(app.getHttpServer())
+      .post('/api/auth/anonymous')
+      .send({ device_id: 'test-device-7' })
+      .expect(201);
+    const token7 = auth7.body.token;
+
+    const res = await request(app.getHttpServer())
+      .get('/api/materials?crop_id=crop-grape-future')
+      .set('Authorization', `Bearer ${token7}`)
+      .expect(200);
+
+    expect(res.body.length).toBeGreaterThan(0);
+    for (const m of res.body) {
+      expect(m.cropRules).toEqual([]);
+    }
   });
 });

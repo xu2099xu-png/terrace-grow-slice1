@@ -34,7 +34,7 @@ export class GovernanceService {
       'pollinationProfile', 'pollinationCompatibility', 'environmentRequirement',
       'containerType', 'containerModifier', 'containerRequirement',
       'substrateMaterial', 'materialCropRule', 'materialSubstitution',
-      'soilRecipeTemplate', 'evidenceSource', 'factEvidence',
+      'soilRecipeTemplate', 'factEvidence',
     ];
     return tablesWithReviewStatus.includes(tableName);
   }

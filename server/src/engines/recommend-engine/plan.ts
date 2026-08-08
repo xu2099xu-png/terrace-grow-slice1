@@ -112,13 +112,28 @@ export function buildPerennialPlan(input: PlanInput): PlanCard {
     };
   }
 
+  // Unknown climate zone (chillHoursEstimate=0 or heatLevel=0): we cannot
+  // reliably pick a variety. Never fake a selection from a zero-score list.
+  // Crop-level container / soil advice is still valid and continues below.
+  const unknownClimate =
+    input.climateZone.chillHoursEstimate === 0 || input.climateZone.heatLevel === 0;
+  if (unknownClimate) {
+    warnings.push('气候信息不足，暂无法可靠推荐品种');
+  }
+
   const selectedVarietyId =
-    input.selectedVarietyId && ranked.some((v) => v.varietyId === input.selectedVarietyId)
+    !unknownClimate &&
+    input.selectedVarietyId &&
+    ranked.some((v) => v.varietyId === input.selectedVarietyId)
       ? input.selectedVarietyId
-      : (ranked[0]?.varietyId ?? null);
+      : !unknownClimate
+        ? (ranked[0]?.varietyId ?? null)
+        : null;
 
   // ---- pollination (structured, from data) ----
-  const profile = input.pollinationProfiles.find((p) => p.varietyId === selectedVarietyId) ?? null;
+  const profile = selectedVarietyId
+    ? (input.pollinationProfiles.find((p) => p.varietyId === selectedVarietyId) ?? null)
+    : null;
   const pollination = resolvePollination(
     profile,
     input.pollinationCompat,
@@ -132,7 +147,13 @@ export function buildPerennialPlan(input: PlanInput): PlanCard {
   if (pollination.need_two) warnings.push(pollination.note ?? '需要搭配授粉品种');
 
   // ---- Step 4: container from ContainerRequirement rows ----
-  const container = recommendContainer(input.containerRequirements, input.containerTypes, selectedVarietyId);
+  // When the climate is unknown we have no reliable variety-level override,
+  // so container rules fall back to crop-level (varietyId=null).
+  const container = recommendContainer(
+    input.containerRequirements,
+    input.containerTypes,
+    unknownClimate ? null : selectedVarietyId,
+  );
   let selectedContainer: ContainerTypeRow | null = null;
   if (container) {
     const requested = input.selectedContainerTypeId

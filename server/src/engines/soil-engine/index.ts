@@ -1,6 +1,5 @@
-import { groupLabel, prepare, solve, enumerateCompositions } from './solver';
+import { groupLabel, prepare, solve } from './solver';
 import {
-  EngineSlot,
   MissingLine,
   MixLine,
   SoilEngineInput,
@@ -10,57 +9,6 @@ import {
 
 export * from './types';
 export { applyModifiers, enumerateCompositions, generateCandidates, prepare, solve } from './solver';
-
-function round5(v: number): number {
-  return Math.round(v / 5) * 5;
-}
-
-/** L3 fallback: build the reviewed template's default mix from slot midpoints.
- *  NOTE: This is kept as a last-resort template path (L4 unavailable).
- *  It still respects avoid/hard constraints by using the solver's candidate pool.
- */
-function fallbackMix(ctx: ReturnType<typeof prepare>, slots: EngineSlot[], forbiddenPairs: [string, string][] = []) {
-  // Use the solver's wide-target pass (L3) instead of raw template assembly.
-  const wideTargets = { drainage: [0, 5] as [number, number], aeration: [0, 5] as [number, number], retention: [0, 5] as [number, number] };
-  const pool = [...ctx.candidates, ...ctx.substitutionCandidates];
-  const comps = enumerateCompositions(ctx, pool);
-  const feasible: any[] = [];
-  for (const c of comps) {
-    let d = 0, a = 0, w = 0, ownedPct = 0, cautionPct = 0, subPenalty = 0, missing = 0, nonZero = 0;
-    const ids = [...c.keys()];
-    let banned = false;
-    for (let i = 0; i < ids.length; i++) {
-      for (let j = i + 1; j < ids.length; j++) {
-        if (forbiddenPairs.some(([x, y]) => (x === ids[i] && y === ids[j]) || (x === ids[j] && y === ids[i]))) {
-          banned = true; break;
-        }
-      }
-      if (banned) break;
-    }
-    if (banned) continue;
-    for (const [id, pct] of c) {
-      const m = ctx.byId.get(id);
-      if (!m) continue;
-      d += (pct * m.drainage) / 100;
-      a += (pct * m.aeration) / 100;
-      w += (pct * m.waterRetention) / 100;
-      if (ctx.owned.has(id)) ownedPct += pct;
-      else missing++;
-      if (ctx.caution.has(id)) cautionPct += pct;
-      subPenalty += (pct * (ctx.subPenaltyOf.get(id) ?? 0)) / 100;
-      nonZero++;
-    }
-    const quality = subPenalty + ctx.config.cautionPenalty * (cautionPct / 100);
-    feasible.push({ comp: c, drainage: d, aeration: a, retention: w, quality, convenience: ownedPct / 100, missingCount: missing, nonZeroCount: nonZero, cautionShare: cautionPct / 100 });
-  }
-  if (feasible.length === 0) return null;
-  feasible.sort((x: any, y: any) => x.quality - y.quality);
-  const topK = feasible.slice(0, ctx.config.topK);
-  const bestConv = Math.max(...topK.map((f: any) => f.convenience));
-  const convBand = topK.filter((f: any) => f.convenience >= bestConv - ctx.config.convenienceTolerance);
-  convBand.sort((x: any, y: any) => x.missingCount - y.missingCount || x.nonZeroCount - y.nonZeroCount || x.quality - y.quality);
-  return convBand[0]?.comp ?? null;
-}
 
 export function calculateSoilMix(input: SoilEngineInput, containerName?: string): SoilResult {
   const ctx = prepare(input, containerName);
@@ -88,7 +36,7 @@ export function calculateSoilMix(input: SoilEngineInput, containerName?: string)
       mix: [],
       missing: [],
       substitutions_applied: [],
-      need_acidification: input.requiresAcidification,
+      has_acidifying_component: false,
       ph_management_note: input.phManagementNote ?? null,
       feasibility: 'unavailable',
       water_retention_score: 0,
@@ -149,17 +97,21 @@ export function calculateSoilMix(input: SoilEngineInput, containerName?: string)
     };
   });
 
-  // v1.4: no mathematical pH constraint. Acidification note comes from caller (crop-aware).
-  const needAcid = input.requiresAcidification && acidPct === 0;
-  if (needAcid) {
-    reasons.push('配方中缺乏酸性材料，建议额外调酸');
+  // v1.4: no mathematical pH constraint. `has_acidifying_component` is a pure
+  // fact field (does the chosen mix contain any acidifying material?). We do
+  // NOT derive "acid management is handled" from mere presence of acidifying
+  // material; the crop-aware `ph_management_note` (passed by the caller) is
+  // shown whenever the crop requires acidification.
+  const has_acidifying_component = acidPct > 0;
+  if (input.requiresAcidification && !has_acidifying_component) {
+    reasons.push('配方中不含酸性材料');
   }
 
   return {
     mix,
     missing,
     substitutions_applied,
-    need_acidification: needAcid,
+    has_acidifying_component,
     ph_management_note: input.phManagementNote ?? null,
     feasibility,
     water_retention_score: Math.round(w * 100) / 100,

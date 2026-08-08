@@ -6,9 +6,15 @@
     "setup": "npm ci && npm --prefix server ci && npm --prefix h5 ci",
     "db:up": "docker compose up -d postgres && docker compose wait postgres",
     "db:push": "npm --prefix server run db:push",
+    "db:migrate": "npm --prefix server run db:migrate",
+    "db:test:setup": "npm --prefix server run db:test:setup",
     "db:seed": "npm --prefix server run seed",
     "dev": "npm run db:up && npm run db:push && npm run db:seed && npm --prefix server run build && concurrently -n tsc,server,h5 -c yellow,blue,green \"npm --prefix server run tsc:watch\" \"npm --prefix server run start:watch\" \"npm --prefix h5 run dev\"",
-    "test": "npm --prefix server run test"
+    "test:unit": "npm --prefix server run test:unit",
+    "test:integration": "npm --prefix server run test:integration",
+    "test:e2e": "npm --prefix server run test:e2e",
+    "test:all": "npm --prefix server run test:all",
+    "build": "npm --prefix server run build && npm --prefix h5 run build"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

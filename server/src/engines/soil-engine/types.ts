@@ -55,9 +55,6 @@ export interface EngineConfig {
   convenienceTolerance: number; // Layer 4 "相近" band (default 0.05)
   cautionPenalty: number; // Layer 2 caution weight (default 1.0)
   substitutionPenalty: number; // Layer 2 substitution weight (default 0.5)
-  // soft preference only (NOT a pH model): for acid-loving crops, quality layer
-  // mildly prefers mixes whose acidifying share reaches a reasonable share
-  acidLackPenalty: number; // default 2
 }
 
 export const DEFAULT_CONFIG: EngineConfig = {
@@ -67,7 +64,6 @@ export const DEFAULT_CONFIG: EngineConfig = {
   convenienceTolerance: 0.05,
   cautionPenalty: 1.0,
   substitutionPenalty: 0.5,
-  acidLackPenalty: 2,
 };
 
 export interface SoilEngineInput {
@@ -117,7 +113,9 @@ export interface SoilResult {
   mix: MixLine[];
   missing: MissingLine[];
   substitutions_applied: SubstitutionApplied[];
-  need_acidification: boolean;
+  /** Fact field: does the chosen mix contain any acidifying material? */
+  has_acidifying_component: boolean;
+  /** Crop-aware pH management note (never a calculated pH value). */
   ph_management_note: string | null;
   feasibility: Feasibility;
   water_retention_score: number;

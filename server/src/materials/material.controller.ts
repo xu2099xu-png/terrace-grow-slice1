@@ -1,48 +1,38 @@
-import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
-import { GovernanceService } from '../governance.service';
+import { Controller, Get, Put, Body, Query, UseGuards } from '@nestjs/common';
+import { AgriDataService } from '../agri-data.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('materials')
 @UseGuards(AuthGuard)
 export class MaterialController {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly governance: GovernanceService,
-  ) {}
+  constructor(private readonly agri: AgriDataService) {}
 
+  /**
+   * Material list with crop rules.
+   * `crop_id` is an explicit input: when provided, only rules for that crop
+   * are attached; when omitted, all approved rules are returned (each keeps
+   * its own cropId). No hardcoded blueberry.
+   */
   @Get()
-  async list() {
-    return this.prisma.substrateMaterial.findMany({
-      where: this.governance.reviewStatusFilter(),
-      include: { cropRules: { where: { cropId: 'crop-blueberry' } } },
-    });
+  async list(@Query('crop_id') cropId?: string) {
+    return this.agri.listMaterialsWithRules(cropId);
   }
 
   @Get('mine')
   async mine(@CurrentUser() userId: string) {
-    const rows = await this.prisma.userMaterialInventory.findMany({
-      where: { userId },
-      include: { material: true },
-    });
-    return rows.map((r) => ({ materialId: r.materialId, name: r.material.name, level: r.level }));
+    const rows = await this.agri.getUserMaterialInventory(userId);
+    return rows.map((r) => ({ materialId: r.materialId, name: r.material?.name ?? null, level: r.level }));
   }
 }
 
 @Controller('users/me/materials')
 @UseGuards(AuthGuard)
 export class UserMaterialController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly agri: AgriDataService) {}
 
   @Put()
   async set(@CurrentUser() userId: string, @Body('material_ids') materialIds: string[]) {
-    await this.prisma.userMaterialInventory.deleteMany({ where: { userId } });
-    if (!materialIds || materialIds.length === 0) return { ok: true };
-    await this.prisma.userMaterialInventory.createMany({
-      data: materialIds.map((id) => ({ userId, materialId: id, level: 'enough' })),
-      skipDuplicates: true,
-    });
-    return { ok: true };
+    return this.agri.setUserMaterialInventory(userId, materialIds);
   }
 }

@@ -434,9 +434,9 @@ function solvePass(
 }
 
 /**
- * Solve with the L1-L4 degradation ladder (v1.4 §5.4).
- * L3/L4 (fallback template / unavailable) are handled by the caller,
- * which owns template knowledge; this returns the best of L0/L1/L2.
+ * Solve with the L0-L3 degradation ladder (v1.4 §5.4).
+ * L3 uses the reviewed fallback template (with its own slot bounds and
+ * targets); the final "unavailable" outcome is decided by the caller.
  */
 export function solve(ctx: PreparedContext, forbiddenPairs: [string, string][] = []): SolveOutcome {
   // L0: initial candidate set

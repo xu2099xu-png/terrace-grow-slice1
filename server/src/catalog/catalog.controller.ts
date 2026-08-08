@@ -1,32 +1,21 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
-import { GovernanceService } from '../governance.service';
+import { AgriDataService } from '../agri-data.service';
 import { Public } from '../auth/public.decorator';
 
 @Controller('crops')
 export class CatalogController {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly governance: GovernanceService,
-  ) {}
+  constructor(private readonly agri: AgriDataService) {}
 
   @Public()
   @Get()
   async list(@Query('life_type') lifeType?: string) {
-    const where = {
-      ...(lifeType ? { lifeType } : {}),
-      ...this.governance.reviewStatusFilter(),
-    };
-    return this.prisma.crop.findMany({ where, include: { environmentRequirement: true } });
+    return this.agri.listCrops(lifeType);
   }
 
   @Public()
   @Get(':id/varieties')
   async varieties(@Param('id') cropId: string) {
-    const rows = await this.prisma.variety.findMany({
-      where: { cropId, ...this.governance.reviewStatusFilter() },
-      include: { traits: { include: { attribute: true } } },
-    });
+    const rows = await this.agri.listVarieties(cropId);
     return rows.map((v) => ({
       id: v.id,
       name: v.name,

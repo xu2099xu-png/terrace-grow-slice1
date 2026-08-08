@@ -1,8 +1,8 @@
-import { Controller, Get, Post, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { assessSunlight, estimateSunlightFromRules } from '../engines/recommend-engine/sunlight';
+import { estimateSunlightFromRules } from '../engines/recommend-engine/sunlight';
 import { ClimateZone, SunEstimateRule, SunLevelMap } from '@prisma/client';
 
 function levelFromDirect(sunExposureLevel: string, levelMap: SunLevelMap[]): { hoursMin: number; hoursMax: number; confidence: string } | null {
@@ -30,9 +30,16 @@ export class TerraceController {
       sunOrientationRaw?: string;
       sunTimeObsRaw?: string;
       orientation?: string;
-      rainExposed?: boolean;
+      rainExposed: boolean;
     },
   ) {
+    // rainExposed is a required field at the API boundary: a missing value
+    // must not be silently interpreted as "no rain". Old clients / future
+    // miniprogram callers get a 400 instead of a polluted water-risk result.
+    if (typeof body.rainExposed !== 'boolean') {
+      throw new BadRequestException('rainExposed is required (boolean)');
+    }
+
     const levelMap = await this.prisma.sunLevelMap.findMany();
     const rules = await this.prisma.sunEstimateRule.findMany();
     const zones = await this.prisma.climateZone.findMany();
@@ -83,7 +90,7 @@ export class TerraceController {
       sunOrientationRaw: body.sunOrientationRaw || null,
       sunTimeObsRaw: body.sunTimeObsRaw || null,
       orientation: body.orientation || null,
-      rainExposed: body.rainExposed ?? false,
+      rainExposed: body.rainExposed,
     };
 
     if (existing) {

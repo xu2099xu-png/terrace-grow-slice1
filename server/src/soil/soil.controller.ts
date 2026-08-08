@@ -1,62 +1,81 @@
 import { Controller, Post, Body, UseGuards } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
-import { GovernanceService } from '../governance.service';
+import { AgriDataService } from '../agri-data.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { calculateSoilMix } from '../engines/soil-engine';
 import { assessWaterRisk } from '../engines/recommend-engine/water-risk';
+import { recommendContainer } from '../engines/recommend-engine/container';
+import type { ContainerRequirementRow, ContainerTypeRow } from '../engines/recommend-engine/container';
 
 @Controller('soil')
 @UseGuards(AuthGuard)
 export class SoilController {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly governance: GovernanceService,
-  ) {}
+  constructor(private readonly agri: AgriDataService) {}
 
   @Post('calculate')
   async calculate(
     @CurrentUser() userId: string,
-    @Body() body: { crop_id: string; container_type_id: string; material_ids?: string[] },
+    @Body() body: {
+      crop_id: string;
+      container_type_id: string;
+      selected_variety_id?: string | null;
+      material_ids?: string[];
+    },
   ) {
-    const cropId = body.crop_id;
-    const reviewFilter = this.governance.reviewStatusFilter();
+    const { crop_id: cropId, container_type_id: containerTypeId } = body;
+    const selectedVarietyId = body.selected_variety_id || null;
 
-    const container = await this.prisma.containerType.findUnique({
-      where: { id: body.container_type_id, ...reviewFilter },
-    });
-    const modifiers = container
-      ? await this.prisma.containerModifier.findMany({ where: { containerTypeId: container.id, ...reviewFilter } })
-      : [];
-    const template = await this.prisma.soilRecipeTemplate.findFirst({
-      where: { cropId, isFallback: false, ...reviewFilter },
-    });
-    const fallbackTemplate = await this.prisma.soilRecipeTemplate.findFirst({
-      where: { cropId, isFallback: true, ...reviewFilter },
-    });
-    const slots = template
-      ? await this.prisma.soilRecipeSlot.findMany({ where: { templateId: template.id } })
-      : [];
-    const fallbackSlots = fallbackTemplate
-      ? await this.prisma.soilRecipeSlot.findMany({ where: { templateId: fallbackTemplate.id } })
-      : [];
-    const materials = await this.prisma.substrateMaterial.findMany({ where: reviewFilter });
-    const rules = await this.prisma.materialCropRule.findMany({ where: { cropId, ...reviewFilter } });
-    const substitutions = await this.prisma.materialSubstitution.findMany({ where: reviewFilter });
-    const inventory = await this.prisma.userMaterialInventory.findMany({ where: { userId } });
+    const container = await this.agri.getContainerType(containerTypeId);
+    if (!container) return { error: 'Container not found' };
+
+    const modifiers = await this.agri.getContainerModifiers([container.id]);
+    const template = await this.agri.getSoilRecipeTemplate(cropId, false);
+    const fallbackTemplate = await this.agri.getSoilRecipeTemplate(cropId, true);
+    const slots = template ? await this.agri.getSoilRecipeSlots(template.id) : [];
+    const fallbackSlots = fallbackTemplate ? await this.agri.getSoilRecipeSlots(fallbackTemplate.id) : [];
+    const materials = await this.agri.listMaterials();
+    const rules = await this.agri.getMaterialCropRules(cropId);
+    const substitutions = await this.agri.listMaterialSubstitutions();
+    const inventory = await this.agri.getUserMaterialInventory(userId);
     const ownedIds = body.material_ids ?? inventory.map((i) => i.materialId);
 
-    const crop = await this.prisma.crop.findUnique({ where: { id: cropId, ...reviewFilter } });
-    const profile = await this.prisma.terraceProfile.findFirst({ where: { userId } });
-    const containerReqs = await this.prisma.containerRequirement.findMany({ where: { cropId, ...reviewFilter } });
+    const crop = await this.agri.getCrop(cropId);
+    const profile = await this.agri.getTerraceProfile(userId);
+    const containerReqs = await this.agri.getContainerRequirements(cropId);
+    const containerTypes = await this.agri.listContainerTypes();
 
-    // volume from container requirement range (midpoint), fallback to template baseVolumeL
-    let volumeL = template?.baseVolumeL ?? 30;
-    if (containerReqs.length > 0) {
-      const preferredMin = Math.max(...containerReqs.map((r) => r.preferredVolumeMinL));
-      const preferredMax = Math.min(...containerReqs.map((r) => r.preferredVolumeMaxL));
-      volumeL = Math.round(((preferredMin + Math.max(preferredMin, preferredMax)) / 2) * 10) / 10;
-    }
+    // Same container-selection rule as the main plan (variety-level override
+    // wins over crop-level; single volume basis across first plan and recalcs).
+    const containerRequirements: ContainerRequirementRow[] = containerReqs.map((r) => ({
+      id: r.id,
+      cropId: r.cropId,
+      varietyId: r.varietyId,
+      minVolumeL: r.minVolumeL,
+      preferredVolumeMinL: r.preferredVolumeMinL,
+      preferredVolumeMaxL: r.preferredVolumeMaxL,
+      minDepthCm: r.minDepthCm,
+      minWidthCm: r.minWidthCm,
+      minDrainageLevel: r.minDrainageLevel,
+      minAerationLevel: r.minAerationLevel,
+      preferredContainerTypeIds: (r.preferredContainerTypeIds as string[]) || [],
+      avoidContainerTypeIds: (r.avoidContainerTypeIds as string[]) || [],
+      supportRequired: r.supportRequired,
+      repotYears: r.repotYears,
+      reason: r.reason,
+    }));
+    const containerTypesRows: ContainerTypeRow[] = containerTypes.map((t) => ({
+      id: t.id,
+      name: t.name,
+      drainage: t.drainage,
+      aeration: t.aeration,
+      waterRetention: t.waterRetention,
+    }));
+    const containerRec = recommendContainer(containerRequirements, containerTypesRows, selectedVarietyId);
+
+    // volume from the same recommendContainer source as buildPerennialPlan
+    const volumeL = containerRec
+      ? Math.round(((containerRec.volumeRange[0] + containerRec.volumeRange[1]) / 2) * 10) / 10
+      : template?.baseVolumeL ?? 30;
 
     const soilResult = template
       ? calculateSoilMix(
@@ -111,13 +130,13 @@ export class SoilController {
                 }
               : undefined,
           },
-          container?.name,
+          container.name,
         )
       : null;
 
     let waterRisk: any = null;
     if (soilResult && container && profile) {
-      const waterRiskConfig = await this.prisma.waterRiskConfig.findMany();
+      const waterRiskConfig = await this.prismaWaterRiskConfig();
       waterRisk = assessWaterRisk(
         crop?.waterloggingSensitivity || 3,
         container.drainage,
@@ -135,6 +154,11 @@ export class SoilController {
     }
 
     return { soil: soilResult, water_risk: waterRisk };
+  }
+
+  /** WaterRiskConfig has no reviewStatus — read via raw prisma through AgriDataService helper. */
+  private async prismaWaterRiskConfig() {
+    return this.agri.listWaterRiskConfig();
   }
 
   /** Get crop-aware pH management note (not from startMethodNote). */
