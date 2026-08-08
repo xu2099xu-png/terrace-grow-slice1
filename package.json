@@ -1,0 +1,16 @@
+{
+  "name": "terrace-grow",
+  "private": true,
+  "description": "Terrace container planting product - Slice 1 (blueberry vertical slice)",
+  "scripts": {
+    "setup": "npm install && npm --prefix server install && npm --prefix h5 install",
+    "db:up": "docker compose up -d postgres && docker compose wait postgres",
+    "db:push": "npm --prefix server run db:push",
+    "db:seed": "npm --prefix server run seed",
+    "dev": "npm run db:up && npm run db:push && npm run db:seed && npm --prefix server run build && concurrently -n tsc,server,h5 -c yellow,blue,green \"npm --prefix server run tsc:watch\" \"npm --prefix server run start:watch\" \"npm --prefix h5 run dev\"",
+    "test": "npm --prefix server run test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

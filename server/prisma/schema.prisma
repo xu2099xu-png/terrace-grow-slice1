@@ -1,0 +1,452 @@
+// Terrace Grow - Slice 1 (blueberry vertical slice) schema
+// Baseline: architecture v1.4 (frozen). Only entities actually used by Slice 1.
+//
+// Governance fields on agricultural fact tables:
+//   source        -- 'manual'|'ai_generated'|'expert'
+//   reviewStatus  -- 'draft'|'ai_generated'|'cross_reviewed'|'approved'
+//   confidence    -- 1-5
+//   version       -- int
+// DEV_FIXTURE seed data is reviewStatus='draft' — NOT approved content.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- identity ----------
+
+model User {
+  id               String   @id @default(uuid())
+  nickname         String?
+  avatar           String?
+  status           String   @default("active") // active | merged_into
+  mergedIntoUserId String?
+  createdAt        DateTime @default(now())
+
+  identities UserIdentity[]
+  terraces   TerraceProfile[]
+  materials  UserMaterialInventory[]
+}
+
+model UserIdentity {
+  id             String   @id @default(uuid())
+  userId         String
+  provider       String // 'anonymous_device'|'phone'|'wechat_miniprogram'
+  providerUid    String
+  unionid        String?
+  credentialMeta Json?
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([provider, providerUid])
+}
+
+// ---------- terrace profile (v1.4 §3.9) ----------
+
+model TerraceProfile {
+  id                String   @id @default(uuid())
+  userId            String
+  name              String   @default("我的露台")
+  cityCode          String
+  lat               Float?
+  lng               Float?
+  // sunlight quad
+  sunExposureLevel  String // LOW|SHORT|MEDIUM|LONG|UNKNOWN
+  sunHoursMin       Float
+  sunHoursMax       Float
+  sunSource         String // self_reported|assisted_estimate|unknown
+  sunConfidence     String // medium | low
+  // raw answers (P-3: store facts)
+  sunOrientationRaw String?
+  sunTimeObsRaw     String?
+  orientation       String?
+  rainExposed       Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+// level -> default hours range (data, not code)
+model SunLevelMap {
+  level    String @id // LOW|SHORT|MEDIUM|LONG|UNKNOWN
+  label    String
+  hoursMin Float
+  hoursMax Float
+}
+
+// (orientation, time_obs) -> estimate. Includes 'unknown' combos.
+model SunEstimateRule {
+  id          String @id @default(uuid())
+  orientation String // south|east|west|north|unknown
+  timeObs     String // morning|afternoon|allday|rarely|unknown
+  level       String
+  hoursMin    Float
+  hoursMax    Float
+  confidence  String // medium|low
+
+  @@unique([orientation, timeObs])
+}
+
+// minimal climate zone for Slice 1 variety matching
+model ClimateZone {
+  code               String @id // e.g. 'east_china'
+  name               String
+  cityCodes          Json // string[]
+  chillHoursEstimate Int // winter chill estimate (hours)
+  heatLevel          Int // 1-5 summer heat
+}
+
+// ---------- catalog ----------
+
+model Crop {
+  id                      String   @id @default(uuid())
+  name                    String
+  latinName               String?
+  lifeType                String // seasonal|perennial
+  category                String // vegetable|fruit|herb|flower
+  difficulty              Int
+  familyUse               Int
+  yieldLevel              Int
+  harvestDaysMin          Int?
+  harvestDaysMax          Int?
+  containerFriendly       Boolean  @default(true)
+  recommendedStartMethod  String   @default("nursery_plant")
+  startMethodNote         String?
+  waterloggingSensitivity Int // 1-5
+  acidityNeed             String // acid_required|slightly_acid|neutral|any
+  requiresAcidification   Boolean  @default(false)
+  coverImage              String?
+  // governance
+  source                  String   @default("manual")
+  reviewStatus            String   @default("draft")
+  confidence              Int      @default(1)
+  version                 Int      @default(1)
+  updatedAt               DateTime @updatedAt
+
+  varieties              Variety[]
+  environmentRequirement EnvironmentRequirement[]
+  containerRequirements  ContainerRequirement[]
+  materialRules          MaterialCropRule[]
+  recipeTemplates        SoilRecipeTemplate[]
+}
+
+model Variety {
+  id           String  @id @default(uuid())
+  cropId       String
+  name         String
+  maturePeriod String? // early|mid|late
+  plantHabit   String? // compact|standard|vigorous
+  containerFit Int? // 1-5
+  // NOTE: is_default deleted in v1.4 — no placeholder rows.
+  // governance
+  source       String  @default("manual")
+  reviewStatus String  @default("draft")
+  confidence   Int     @default(1)
+  version      Int     @default(1)
+
+  crop                 Crop                      @relation(fields: [cropId], references: [id])
+  traits               VarietyTrait[]
+  pollinationProfile   PollinationProfile?
+  pollinationFrom      PollinationCompatibility[] @relation("from_variety")
+  pollinationTo        PollinationCompatibility[] @relation("to_variety")
+  containerRequirements ContainerRequirement[]
+}
+
+model AttributeDefinition {
+  id               String  @id @default(uuid())
+  key              String  @unique
+  label            String
+  valueType        String // number|range|enum|boolean
+  unit             String?
+  enumOptions      Json?
+  appliesToCropIds Json?
+  usedIn           Json // ['recommendation','display','lifecycle']
+  // governance
+  source           String  @default("manual")
+  reviewStatus     String  @default("draft")
+  confidence       Int     @default(1)
+  version          Int     @default(1)
+
+  traits VarietyTrait[]
+}
+
+model VarietyTrait {
+  id          String   @id @default(uuid())
+  varietyId   String
+  attributeId String
+  valueNumber Float?
+  valueMin    Float?
+  valueMax    Float?
+  valueEnum   String?
+  valueBool   Boolean?
+  // governance
+  source      String   @default("manual")
+  reviewStatus String  @default("draft")
+  confidence  Int      @default(1)
+
+  variety   Variety             @relation(fields: [varietyId], references: [id])
+  attribute AttributeDefinition @relation(fields: [attributeId], references: [id])
+
+  @@unique([varietyId, attributeId])
+  @@index([attributeId, valueNumber])
+}
+
+// v1.4 §3.6: own pollination attributes
+model PollinationProfile {
+  id            String  @id @default(uuid())
+  varietyId     String  @unique
+  sexType       String // hermaphrodite|male|female|monoecious
+  selfFertility String // self_fertile|partially_self_fertile|self_sterile
+  crossRequired Boolean @default(false)
+  bloomGroup    String?
+  notes         String?
+  // governance
+  source        String  @default("manual")
+  reviewStatus  String  @default("draft")
+  confidence    Int     @default(1)
+
+  variety Variety @relation(fields: [varietyId], references: [id])
+}
+
+// v1.4 §3.6: pairwise relationships, only known pairs
+model PollinationCompatibility {
+  id               String  @id @default(uuid())
+  varietyId        String
+  partnerVarietyId String
+  compatibility    String // good|partial|incompatible
+  reason           String?
+  // governance
+  source           String  @default("manual")
+  reviewStatus     String  @default("draft")
+  confidence       Int     @default(1)
+
+  variety Variety @relation("from_variety", fields: [varietyId], references: [id])
+  partner Variety @relation("to_variety", fields: [partnerVarietyId], references: [id])
+
+  @@unique([varietyId, partnerVarietyId])
+}
+
+model EnvironmentRequirement {
+  id             String  @id @default(uuid())
+  ownerType      String  @default("crop")
+  ownerId        String
+  minSunHours    Float
+  tempMin        Float?
+  tempMax        Float?
+  optimalTempMin Float?
+  optimalTempMax Float?
+  frostSensitive Boolean @default(false)
+  // governance
+  source         String  @default("manual")
+  reviewStatus   String  @default("draft")
+  confidence     Int     @default(1)
+
+  crop Crop @relation(fields: [ownerId], references: [id])
+}
+
+// ---------- containers ----------
+
+model ContainerType {
+  id             String @id @default(uuid())
+  name           String
+  drainage       Int // 1-5
+  aeration       Int // 1-5
+  waterRetention Int // 1-5
+  // governance
+  source         String @default("manual")
+  reviewStatus   String @default("draft")
+  confidence     Int    @default(1)
+
+  modifiers ContainerModifier[]
+}
+
+model ContainerModifier {
+  id              String  @id @default(uuid())
+  containerTypeId String
+  adjustTarget    String // water_retention|drainage|aeration
+  delta           Float
+  directionHint   Json? // {increase_group, decrease_group}
+  // governance
+  source          String  @default("manual")
+  reviewStatus    String  @default("draft")
+  confidence      Int     @default(1)
+
+  containerType ContainerType @relation(fields: [containerTypeId], references: [id])
+}
+
+// v1.4 §3.3: container rules live in the database, not in if/else
+model ContainerRequirement {
+  id                       String   @id @default(uuid())
+  cropId                   String
+  varietyId                String? // variety-level overrides crop-level
+  minVolumeL               Float
+  preferredVolumeMinL      Float
+  preferredVolumeMaxL      Float
+  minDepthCm               Float?
+  minWidthCm               Float?
+  minDrainageLevel         Int      @default(1)
+  minAerationLevel         Int      @default(1)
+  preferredContainerTypeIds Json? // string[]
+  avoidContainerTypeIds    Json? // string[]
+  supportRequired          Boolean  @default(false)
+  repotYears               Int?
+  reason                   String?
+  // governance
+  source                   String   @default("manual")
+  reviewStatus             String   @default("draft")
+  confidence               Int      @default(1)
+
+  crop    Crop     @relation(fields: [cropId], references: [id])
+  variety Variety? @relation(fields: [varietyId], references: [id])
+}
+
+// ---------- substrate / soil ----------
+
+model SubstrateMaterial {
+  id             String  @id @default(uuid())
+  name           String
+  waterRetention Int // 0-5
+  drainage       Int // 0-5
+  aeration       Int // 0-5
+  organicMatter  Int // 0-5
+  nutrient       Int // 0-5
+  acidifying     Boolean @default(false)
+  functionGroup  String // base|drainage|retention|organic
+  costLevel      Int // 1-3
+  commonality    Int // 1-3
+  // governance
+  source         String  @default("manual")
+  reviewStatus   String  @default("draft")
+  confidence     Int     @default(1)
+
+  cropRules        MaterialCropRule[]
+  substitutionsTo  MaterialSubstitution[] @relation("sub_to")
+  substitutionsFrom MaterialSubstitution[] @relation("sub_from")
+  inventories      UserMaterialInventory[]
+}
+
+model MaterialCropRule {
+  id         String  @id @default(uuid())
+  cropId     String? // null = generic
+  materialId String
+  level      String // recommended|allowed|caution|avoid
+  reason     String?
+  // governance
+  source     String  @default("manual")
+  reviewStatus String @default("draft")
+  confidence Int      @default(1)
+
+  crop     Crop?             @relation(fields: [cropId], references: [id])
+  material SubstrateMaterial @relation(fields: [materialId], references: [id])
+
+  @@unique([cropId, materialId])
+}
+
+// v1.4 §3.13: NO ratio_factor. Substitution only means "allowed to substitute";
+// the proportion is decided by the solver.
+model MaterialSubstitution {
+  id             String  @id @default(uuid())
+  materialFromId String
+  materialToId   String
+  scope          String // 'base'|'drainage'|'retention'|'organic'
+  compatibility  Int // 1-5
+  penalty        Float @default(0) // 0-3 soft penalty
+  conditions     String?
+  confidence     Int     @default(3) // 1-5, doubles as governance confidence
+  // governance
+  source         String  @default("manual")
+  reviewStatus   String  @default("draft")
+
+  materialFrom SubstrateMaterial @relation("sub_from", fields: [materialFromId], references: [id])
+  materialTo   SubstrateMaterial @relation("sub_to", fields: [materialToId], references: [id])
+}
+
+model SoilRecipeTemplate {
+  id               String  @id @default(uuid())
+  cropId           String?
+  varietyId        String?
+  baseVolumeL      Float   @default(30)
+  // disclosed addition (Slice 1 plan §0): H3-H5 target intervals live here as data
+  targetProperties Json? // {drainage:[min,max], aeration:[min,max], retention:[min,max]}
+  isFallback       Boolean @default(false)
+  // governance
+  source           String  @default("manual")
+  reviewStatus     String  @default("draft")
+  confidence       Int     @default(1)
+
+  crop  Crop?           @relation(fields: [cropId], references: [id])
+  slots SoilRecipeSlot[]
+}
+
+model SoilRecipeSlot {
+  id                 String  @id @default(uuid())
+  templateId         String
+  functionGroup      String // base|drainage|retention|organic
+  minPct             Float
+  maxPct             Float
+  preferredMaterials Json? // string[] material ids
+  required           Boolean @default(false)
+
+  template SoilRecipeTemplate @relation(fields: [templateId], references: [id])
+}
+
+// v1.4 §3.15 / v1.3 §4.15: waterlogging risk lookup (banded)
+model WaterRiskConfig {
+  id                     String  @id @default(uuid())
+  sensitivityBand        String // low(1-2)|mid(3)|high(4-5)
+  containerDrainageBand  String // low(1-2)|mid(3)|high(4-5)
+  mixDrainageBand        String // low|mid|high
+  rainExposed            Boolean
+  riskLevel              String // low|mid|high
+  mitigation             Json? // string[]
+
+  @@unique([sensitivityBand, containerDrainageBand, mixDrainageBand, rainExposed])
+}
+
+// ---------- user material inventory ----------
+
+model UserMaterialInventory {
+  id         String @id @default(uuid())
+  userId     String
+  materialId String
+  level      String @default("enough") // enough|little
+
+  user     User              @relation(fields: [userId], references: [id])
+  material SubstrateMaterial @relation(fields: [materialId], references: [id])
+
+  @@unique([userId, materialId])
+}
+
+// ---------- evidence / governance (v1.4 §3.21-3.22) ----------
+
+model EvidenceSource {
+  id          String    @id @default(uuid())
+  title       String
+  organization String?
+  url         String?
+  citation    String?
+  sourceType  String // academic|extension|grower_consensus|ai_synthesis|manual_expert
+  publishedAt DateTime?
+  retrievedAt DateTime  @default(now())
+  notes       String?
+
+  facts FactEvidence[]
+}
+
+model FactEvidence {
+  id               String @id @default(uuid())
+  entityType       String // e.g. 'VarietyTrait' | 'ContainerRequirement'
+  entityId         String
+  fieldName        String // e.g. 'chill_hours_min' | 'min_volume_l'
+  evidenceSourceId String
+  note             String?
+  reviewStatus     String @default("draft")
+
+  evidenceSource EvidenceSource @relation(fields: [evidenceSourceId], references: [id])
+}
