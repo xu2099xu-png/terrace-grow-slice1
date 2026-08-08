@@ -137,6 +137,7 @@ model Crop {
   materialRules          MaterialCropRule[]
   recipeTemplates        SoilRecipeTemplate[]
   lifecycleTemplates     LifecycleTemplate[]
+  plantings              PlantingRecord[]
 }
 
 model Variety {
@@ -520,6 +521,7 @@ model PlantingRecord {
 
   user     User     @relation(fields: [userId], references: [id])
   terrace  TerraceProfile @relation(fields: [terraceId], references: [id])
+  crop     Crop     @relation(fields: [cropId], references: [id])
   variety  Variety? @relation(fields: [varietyId], references: [id])
   events   PlantingEvent[]
 

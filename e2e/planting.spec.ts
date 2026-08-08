@@ -40,16 +40,17 @@ test('S2-E2E-01 happy path: grape plan to persistent current stage', async ({ pa
   await page.waitForURL('**/#/plantings/**');
   await expect(page.getByText('现在要做什么')).toBeVisible();
 
-  // Complete the first action if present.
-  const completeButton = page.getByRole('button', { name: '完成' }).first();
-  if (await completeButton.isVisible().catch(() => false)) {
-    await completeButton.click();
-    await expect(page.getByRole('button', { name: '已完成' }).first()).toBeVisible();
-  }
+  // Complete the known fixture action deterministically.
+  const actionRow = page.locator('.van-cell', { hasText: '完成定植初期操作' });
+  await expect(actionRow).toBeVisible();
+  await actionRow.getByRole('button', { name: '完成' }).click();
+  await expect(actionRow.getByRole('button', { name: '已完成' })).toBeVisible();
 
-  // Refresh browser → state persisted.
+  // Refresh browser → action still completed.
   await page.reload();
   await expect(page.getByText('现在要做什么')).toBeVisible();
+  const actionRowAfter = page.locator('.van-cell', { hasText: '完成定植初期操作' });
+  await expect(actionRowAfter.getByRole('button', { name: '已完成' })).toBeVisible();
 });
 
 /**

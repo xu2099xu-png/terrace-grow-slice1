@@ -72,6 +72,20 @@ export class PlantingsService {
       throw new BadRequestException('Cannot start planting: sunlight is not suitable');
     }
 
+    // Container contract: the container must be governed and must be the one
+    // the recommendation engine actually accepted (S2-AC-06 / closure fix).
+    const resolvedContainerId = recommendation.container?.selected_type_id;
+    if (!resolvedContainerId) {
+      throw new BadRequestException('No valid container in recommendation');
+    }
+    if (resolvedContainerId !== containerTypeId) {
+      throw new BadRequestException('Invalid container_type_id');
+    }
+    const container = await this.agri.getContainerType(resolvedContainerId);
+    if (!container) {
+      throw new BadRequestException('Container type not found or not approved');
+    }
+
     // Variety validation: if given, must belong to the crop (governed list).
     let varietyId: string | null = variety_id ?? null;
     if (varietyId) {
@@ -86,75 +100,72 @@ export class PlantingsService {
       // Still create a record so the user sees a clear unavailable state?
       // S2-AC-07/14 require explicit lifecycle_unavailable instead of fabricating.
       // We create the record with status=lifecycle_unavailable.
+      try {
+        const planting = await this.prisma.plantingRecord.create({
+          data: {
+            userId,
+            terraceId: terrace.id,
+            cropId,
+            varietyId,
+            containerTypeId: resolvedContainerId,
+            startMethod: START_METHOD,
+            startDate,
+            status: 'lifecycle_unavailable',
+            lifecycleTemplateId: lifecycle?.id ?? 'none',
+            lifecycleVersion: lifecycle?.version ?? 0,
+            clientRequestId: body.client_request_id || null,
+          },
+        });
+        return { planting, created: true };
+      } catch (e: any) {
+        if (e.code === 'P2002' && body.client_request_id) {
+          const existing = await this.prisma.plantingRecord.findUnique({
+            where: { userId_clientRequestId: { userId, clientRequestId: body.client_request_id } },
+          });
+          if (existing) return { planting: existing, created: false };
+        }
+        throw e;
+      }
+    }
+
+    // Pin the lifecycle version at creation (S2-AC-15).
+    try {
       const planting = await this.prisma.plantingRecord.create({
         data: {
           userId,
           terraceId: terrace.id,
           cropId,
           varietyId,
-          containerTypeId,
+          containerTypeId: resolvedContainerId,
           startMethod: START_METHOD,
           startDate,
-          status: 'lifecycle_unavailable',
-          lifecycleTemplateId: lifecycle?.id ?? 'none',
-          lifecycleVersion: lifecycle?.version ?? 0,
+          status: 'active',
+          lifecycleTemplateId: lifecycle.id,
+          lifecycleVersion: lifecycle.version,
           clientRequestId: body.client_request_id || null,
         },
       });
       return { planting, created: true };
+    } catch (e: any) {
+      if (e.code === 'P2002' && body.client_request_id) {
+        const existing = await this.prisma.plantingRecord.findUnique({
+          where: { userId_clientRequestId: { userId, clientRequestId: body.client_request_id } },
+        });
+        if (existing) return { planting: existing, created: false };
+      }
+      throw e;
     }
-
-    // Pin the lifecycle version at creation (S2-AC-15).
-    const planting = await this.prisma.plantingRecord.create({
-      data: {
-        userId,
-        terraceId: terrace.id,
-        cropId,
-        varietyId,
-        containerTypeId,
-        startMethod: START_METHOD,
-        startDate,
-        status: 'active',
-        lifecycleTemplateId: lifecycle.id,
-        lifecycleVersion: lifecycle.version,
-        clientRequestId: body.client_request_id || null,
-      },
-    });
-    return { planting, created: true };
   }
 
-  /** GET /plantings/:id — basic detail (owner only). */
-  async getOne(userId: string, plantingId: string) {
-    const planting = await this.getOwnedPlanting(userId, plantingId);
-    return planting;
-  }
-
-  /** GET /plantings/:id/now — backend is the single source of truth. */
-  async now(userId: string, plantingId: string) {
-    const planting = await this.getOwnedPlanting(userId, plantingId);
-
-    // Resolve pinned lifecycle (governance: approved or dev+draft allowed).
+  /** Resolve the pinned lifecycle state for a planting at a given date. */
+  private async resolveLifecycleForPlanting(planting: any, asOf: Date) {
     const lifecycle = await this.agri.getLifecycleTemplateByIdAndVersion(
       planting.lifecycleTemplateId,
       planting.lifecycleVersion,
     );
-
-    const asOf = new Date();
     if (!lifecycle || lifecycle.stages.length === 0) {
-      return {
-        planting_id: planting.id,
-        status: 'lifecycle_unavailable',
-        as_of_date: asOf.toISOString().slice(0, 10),
-        current_stage: null,
-        actions: [],
-        completed_action_keys: [],
-        next_stage: null,
-        lifecycle_template_id: planting.lifecycleTemplateId,
-        lifecycle_version: planting.lifecycleVersion,
-        warnings: ['lifecycle_unavailable'],
-      };
+      return { lifecycle, res: null };
     }
-
     const res = resolveLifecycle(
       {
         id: lifecycle.id,
@@ -172,8 +183,37 @@ export class PlantingsService {
       },
       planting.startDate,
       asOf,
-      planting.events.map((e) => ({ actionKey: e.actionKey })),
+      planting.events.map((e: any) => ({ actionKey: e.actionKey })),
     );
+    return { lifecycle, res };
+  }
+
+  /** GET /plantings/:id — basic detail (owner only). */
+  async getOne(userId: string, plantingId: string) {
+    const planting = await this.getOwnedPlanting(userId, plantingId);
+    return planting;
+  }
+
+  /** GET /plantings/:id/now — backend is the single source of truth. */
+  async now(userId: string, plantingId: string) {
+    const planting = await this.getOwnedPlanting(userId, plantingId);
+
+    const asOf = new Date();
+    const { lifecycle, res } = await this.resolveLifecycleForPlanting(planting, asOf);
+    if (!res) {
+      return {
+        planting_id: planting.id,
+        status: 'lifecycle_unavailable',
+        as_of_date: asOf.toISOString().slice(0, 10),
+        current_stage: null,
+        actions: [],
+        completed_action_keys: [],
+        next_stage: null,
+        lifecycle_template_id: planting.lifecycleTemplateId,
+        lifecycle_version: planting.lifecycleVersion,
+        warnings: ['lifecycle_unavailable'],
+      };
+    }
 
     return {
       planting_id: planting.id,
@@ -183,8 +223,8 @@ export class PlantingsService {
       actions: res.current_stage?.actions ?? [],
       completed_action_keys: res.completed_action_keys,
       next_stage: toStageContract(res.next_stage),
-      lifecycle_template_id: lifecycle.id,
-      lifecycle_version: lifecycle.version,
+      lifecycle_template_id: lifecycle!.id,
+      lifecycle_version: lifecycle!.version,
       warnings: res.warnings,
     };
   }
@@ -207,37 +247,61 @@ export class PlantingsService {
       }
     }
 
-    // The action must exist in the PINNED lifecycle (S2-AC-18).
-    const lifecycle = await this.agri.getLifecycleTemplateByIdAndVersion(
-      planting.lifecycleTemplateId,
-      planting.lifecycleVersion,
-    );
-    const knownActions = new Set<string>();
-    for (const s of lifecycle?.stages ?? []) {
-      for (const a of (s.actions as string[]) || []) knownActions.add(a);
+    // The action must belong to the CURRENT active stage (closure fix).
+    const { res } = await this.resolveLifecycleForPlanting(planting, new Date());
+    if (!res || res.status !== 'active') {
+      throw new BadRequestException('Planting is not active');
     }
-    if (!knownActions.has(body.action_key)) {
-      throw new BadRequestException(`Unknown action: ${body.action_key}`);
+    const currentActions = res.current_stage?.actions ?? [];
+    if (!currentActions.includes(body.action_key)) {
+      throw new BadRequestException(`Action not available in current stage: ${body.action_key}`);
     }
 
-    const event = await this.prisma.plantingEvent.create({
-      data: {
-        plantingId,
-        actionKey: body.action_key,
-        eventType: 'action_completed',
-        note: body.note || null,
-        clientEventId: body.client_event_id || null,
-      },
-    });
-    return { event, created: true };
+    try {
+      const event = await this.prisma.plantingEvent.create({
+        data: {
+          plantingId,
+          actionKey: body.action_key,
+          eventType: 'action_completed',
+          note: body.note || null,
+          clientEventId: body.client_event_id || null,
+        },
+      });
+      return { event, created: true };
+    } catch (e: any) {
+      if (e.code === 'P2002' && body.client_event_id) {
+        const existing = await this.prisma.plantingEvent.findUnique({
+          where: { plantingId_clientEventId: { plantingId, clientEventId: body.client_event_id } },
+        });
+        if (existing) return { event: existing, created: false };
+      }
+      throw e;
+    }
   }
 
-  /** GET /users/me/plantings */
+  /** GET /users/me/plantings — server-derived summary (no frontend hardcoding). */
   async listMine(userId: string) {
-    return this.prisma.plantingRecord.findMany({
+    const plantings = await this.prisma.plantingRecord.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
+      include: { crop: true, variety: true, events: true },
     });
+    const asOf = new Date();
+    const summaries = await Promise.all(
+      plantings.map(async (p) => {
+        const { res } = await this.resolveLifecycleForPlanting(p, asOf);
+        return {
+          planting_id: p.id,
+          crop_name: p.crop?.name ?? '未知作物',
+          variety_name: p.variety?.name ?? null,
+          start_date: p.startDate.toISOString().slice(0, 10),
+          status: res?.status ?? p.status,
+          current_stage_name: res?.current_stage?.stageName ?? null,
+          next_action: res?.next_stage?.actions?.[0] ?? null,
+        };
+      }),
+    );
+    return summaries;
   }
 }
 

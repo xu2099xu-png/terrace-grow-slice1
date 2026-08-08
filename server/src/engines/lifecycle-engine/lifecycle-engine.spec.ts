@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveLifecycle, LifecycleTemplateRow } from './index';
+import { resolveLifecycle, LifecycleTemplateRow, dayDiff } from './index';
 
 const template: LifecycleTemplateRow = {
   id: 'lc-grape-crop-v1',
@@ -86,5 +86,20 @@ describe('lifecycle-engine / resolveLifecycle (S2-AC-08..12)', () => {
     const r = resolveLifecycle({ ...template, stages: [] }, start, asOf(0), []);
     expect(r.warnings).toContain('lifecycle_unavailable');
     expect(r.current_stage).toBeNull();
+  });
+
+  it('Asia/Shanghai 23:30 is still the same day (UTC+8)', () => {
+    // startDate in Shanghai = 2026-01-01 (stored as UTC 2026-01-01 00:00)
+    const start = new Date('2026-01-01T00:00:00.000Z');
+    // UTC 2026-01-01 14:30 = Shanghai 2026-01-01 22:30 -> same day
+    const asOf = new Date('2026-01-01T14:30:00.000Z');
+    expect(dayDiff(start, asOf)).toBe(0);
+  });
+
+  it('Asia/Shanghai 00:30 is already the next day (UTC+8)', () => {
+    const start = new Date('2026-01-01T00:00:00.000Z');
+    // UTC 2026-01-01 16:30 = Shanghai 2026-01-02 00:30 -> next day
+    const asOf = new Date('2026-01-01T16:30:00.000Z');
+    expect(dayDiff(start, asOf)).toBe(1);
   });
 });

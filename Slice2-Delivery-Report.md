@@ -108,6 +108,14 @@ Slice1→Slice2 upgrade DB migrate deploy    → 26→30 tables，用户数据�
 2. **TerraceWizard step=1 的 nextStep 无递增分支**（Slice 1 遗留）：第 1 步点"下一步"不会进入第 2 步。修复 `nextStep` 增加 `step 1→2`。
 3. **now 契约字段命名**：`resolveLifecycle` 返回 camelCase，按 S2-AC-13 契约映射为 snake_case。
 4. **lifecycle 最新版本选择**：`getLifecycleTemplate` 增加 `orderBy: { version: 'desc' }`，新 planting 选最高 active 版本（配合 pinning）。
+5. **container 契约**：POST /plantings 不盲信客户端 `container_type_id`，校验推荐引擎实际接受的 `selected_type_id`，不匹配 400；写入 `PlantingRecord` 使用服务端确认值。
+6. **并发幂等**：`createPlanting` / `completeAction` 捕获 Prisma `P2002` 唯一冲突后重读，解决并发竞态（`Promise.all` 同 `client_request_id` / `client_event_id` 双发）。
+7. **action 只能完成当前 stage**：`completeAction` 通过 `resolveLifecycle` 获取 `current_stage`，仅允许当前 stage 的 action；提前完成未来 stage 返回 400。
+8. **Mine 后端化**：GET `/users/me/plantings` 返回服务端推导的 summary（`crop_name` / `variety_name` / `current_stage_name` / `status`），前端删除 `cropId === 'crop-grape' ? '葡萄' : '蓝莓'` 硬编码。
+9. **PlantingStart 数据来自后端**：确认页显示真实 crop / variety / container 名称，API 加载失败时禁止提交（`loadError` + `canSubmit`）。
+10. **LifecycleTemplate NULLS NOT DISTINCT**：PostgreSQL 默认 unique index 对 `NULL` 视为不同值，导致 crop-level 同 version 允许多条。自定义 migration `20260808130300_slice2_lifecycle_nulls_not_distinct` 添加 `NULLS NOT DISTINCT` 约束。
+11. **Asia/Shanghai calendar day**：`lifecycle-engine.dayDiff` 统一按 `Asia/Shanghai` 日历日计算（`Intl.DateTimeFormat`），避免 UTC 跨天偏差导致中国用户阶段切换晚一天。
+12. **Playwright refresh 断言**：E2E-01 改用确定性 fixture action 中文标签定位，断言 reload 后 `已完成` 状态仍在，去掉 `if (button exists)` 弱断言。
 
 ---
 
@@ -122,4 +130,16 @@ Slice1→Slice2 upgrade DB migrate deploy    → 26→30 tables，用户数据�
 
 ## 7. 交付 commit
 
-本报告对应 git commit SHA：**`3be043ed6536f0c2bb6eb81afd26b0277c7b1f7b`**（`Slice 2: grape planting flow — ...`，2026-08-08）。
+本报告 §1–§6 对应 git commit SHA：**`3be043ed6536f0c2bb6eb81afd26b0277c7b1f7b`**（`Slice 2: grape planting flow — ...`，2026-08-08）。
+
+## 8. 审计收口修复（2026-08-08 第二轮）
+
+针对 8 项阻断契约的修复对应 commit SHA：**见最终 main HEAD**（提交信息前缀 `Slice 2: closure — ...`）。
+
+主要修复：
+- container 契约、并发幂等、当前 stage action 限制、Mine 后端化、PlantingStart 真实数据、NULLS NOT DISTINCT、Asia/Shanghai 日历日、Playwright 确定性断言。
+- 新增 `test/slice2-gate.spec.ts` 7 项自动化验证，覆盖上述全部修复点。
+- 最终 `test:all` 全绿（unit 33 + integration 44 + e2e + h5 2 + browser 2）。
+- fresh DB + Slice1→Slice2 upgrade 双路径仍通过。
+
+---

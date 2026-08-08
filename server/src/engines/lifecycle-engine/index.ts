@@ -41,11 +41,25 @@ export interface LifecycleResolution {
   warnings: string[];
 }
 
-/** Day difference between two dates at 00:00 (UTC, calendar-day based). */
+/** Convert a Date to the calendar date in Asia/Shanghai (yyyy-mm-dd). */
+function toShanghaiDate(d: Date): { y: number; m: number; day: number } {
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return { y: get('year'), m: get('month') - 1, day: get('day') };
+}
+
+/** Day difference based on Asia/Shanghai calendar dates (not UTC calendar). */
 export function dayDiff(start: Date, asOf: Date): number {
-  const a = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate());
-  const b = Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), asOf.getUTCDate());
-  return Math.round((b - a) / 86400000);
+  const a = toShanghaiDate(start);
+  const b = toShanghaiDate(asOf);
+  const da = Date.UTC(a.y, a.m, a.day);
+  const db = Date.UTC(b.y, b.m, b.day);
+  return Math.round((db - da) / 86400000);
 }
 
 /**

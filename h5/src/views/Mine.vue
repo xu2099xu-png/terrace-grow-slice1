@@ -13,11 +13,11 @@
         <van-cell v-if="!plantings.length" title="暂无种植记录" />
         <van-cell
           v-for="p in plantings"
-          :key="p.id"
-          :title="cropLabel(p)"
+          :key="p.planting_id"
+          :title="p.crop_name + (p.variety_name ? ' / ' + p.variety_name : '')"
           :label="plantingLabel(p)"
           is-link
-          @click="router.push(`/plantings/${p.id}`)"
+          @click="router.push(`/plantings/${p.planting_id}`)"
         />
       </van-cell-group>
 
@@ -45,19 +45,15 @@ const sunInfo = computed(() => {
   return `${min}–${max}h${conf}`;
 });
 
-function cropLabel(p: any): string {
-  return p.cropId === 'crop-grape' ? '葡萄' : '蓝莓';
-}
-
 function plantingLabel(p: any): string {
-  const variety = p.varietyId ? '' : '品种暂不确定 · ';
   const statusMap: Record<string, string> = {
     planned: '计划中',
     active: '进行中',
     established: '已定植完成',
     lifecycle_unavailable: '流程暂不可用',
   };
-  return `${variety}开始于 ${String(p.startDate).slice(0, 10)} · ${statusMap[p.status] || p.status}`;
+  const stage = p.current_stage_name ? `当前阶段：${p.current_stage_name} · ` : '';
+  return `${stage}开始于 ${p.start_date} · ${statusMap[p.status] || p.status}`;
 }
 
 onMounted(async () => {

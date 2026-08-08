@@ -2,12 +2,19 @@
   <div class="planting-start">
     <van-nav-bar title="开始种植" fixed left-arrow @click-left="goBack" />
 
-    <div class="content" v-if="!loading">
+    <div v-if="loadError" class="content">
+      <van-empty description="数据加载失败，请返回重试" />
+      <div class="actions">
+        <van-button type="primary" block round @click="goBack">返回</van-button>
+      </div>
+    </div>
+
+    <div class="content" v-else-if="!loading">
       <h2>确认开始种植</h2>
       <van-cell-group inset>
-        <van-cell title="作物" :value="cropName" />
-        <van-cell title="品种" :value="varietyLabel" />
-        <van-cell title="容器" :value="containerName" />
+        <van-cell title="作物" :value="cropName || '—'" />
+        <van-cell title="品种" :value="varietyName || '—'" />
+        <van-cell title="容器" :value="containerName || '—'" />
       </van-cell-group>
 
       <van-cell-group inset title="开始日期">
@@ -21,7 +28,7 @@
       </van-cell-group>
 
       <div class="actions">
-        <van-button type="success" block round :disabled="!startDate" @click="submit">
+        <van-button type="success" block round :disabled="!canSubmit" @click="submit">
           确认开始种植
         </van-button>
       </div>
@@ -51,9 +58,10 @@ const cropId = String(route.query.crop_id || '');
 const varietyId = (route.query.variety_id as string) || null;
 const containerTypeId = String(route.query.container_type_id || '');
 
-const cropName = ref('葡萄');
-const containerName = ref('—');
-const varietyLabel = computed(() => (varietyId ? '指定品种' : '品种暂不确定（按通用流程）'));
+const cropName = ref('');
+const varietyName = ref('');
+const containerName = ref('');
+const loadError = ref(false);
 
 const today = new Date();
 const minDate = new Date(today.getFullYear() - 1, 0, 1);
@@ -61,6 +69,8 @@ const maxDate = new Date(today.getFullYear() + 1, 11, 31);
 const startDate = ref(formatDate(today));
 const showPicker = ref(false);
 const loading = ref(true);
+
+const canSubmit = computed(() => !!cropName.value && !!containerName.value && !!startDate.value);
 
 function formatDate(d: Date): string {
   const y = d.getFullYear();
@@ -79,9 +89,12 @@ function goBack() {
 }
 
 async function submit() {
+  if (!canSubmit.value) {
+    showToast('数据未就绪，请稍后重试');
+    return;
+  }
   loading.value = true;
   try {
-    // fetch current terrace (single active profile)
     const mine = await api.get('/terraces/mine');
     const terrace = mine.data;
     if (!terrace) {
@@ -110,23 +123,36 @@ async function submit() {
 
 onMounted(async () => {
   try {
-    const crops = await api.get('/crops');
-    const found = crops.data.find((c: any) => c.id === cropId);
-    cropName.value = found?.name || cropName.value;
+    const [cropsRes, planRes] = await Promise.all([
+      api.get('/crops?life_type=perennial'),
+      api.post('/recommendations/perennial', {
+        crop_id: cropId,
+        selected_container_type_id: containerTypeId,
+        selected_variety_id: varietyId || undefined,
+      }),
+    ]);
+    const crop = cropsRes.data.find((c: any) => c.id === cropId);
+    cropName.value = crop?.name || '';
+
+    const plan = planRes.data;
+    const selectedVarietyId = plan?.selected_variety_id;
+    if (selectedVarietyId) {
+      const varieties = crop?.varieties || [];
+      const v = varieties.find((x: any) => x.id === selectedVarietyId);
+      varietyName.value = v?.name || '';
+    } else {
+      varietyName.value = '品种暂不确定（按通用流程）';
+    }
+
+    containerName.value = plan?.container?.selected_type_id
+      ? containerLabel(plan)
+      : '';
+
+    if (!cropName.value || !containerName.value) {
+      loadError.value = true;
+    }
   } catch (e) {
-    // non-fatal
-  }
-  try {
-    const plan = await api.post('/recommendations/perennial', {
-      crop_id: cropId,
-      selected_container_type_id: containerTypeId,
-      selected_variety_id: varietyId || undefined,
-    });
-    containerName.value = plan.data?.container?.selected_type_id
-      ? containerLabel(plan.data)
-      : '—';
-  } catch (e) {
-    // non-fatal: user can still start with known container/crop
+    loadError.value = true;
   } finally {
     loading.value = false;
   }
@@ -134,7 +160,7 @@ onMounted(async () => {
 
 function containerLabel(plan: any): string {
   const types = [...(plan.container?.preferredTypes || []), ...(plan.container?.acceptableTypes || [])];
-  return types.find((t: any) => t.id === plan.container.selected_type_id)?.name || '—';
+  return types.find((t: any) => t.id === plan.container.selected_type_id)?.name || '';
 }
 </script>
 

@@ -235,7 +235,7 @@ describe('Slice 2 Plantings', () => {
       .send({
         terrace_id: t3.body.id, crop_id: 'crop-grape', variety_id: null,
         container_type_id: plan.body.container.selected_type_id,
-        start_date: '2026-01-01', client_request_id: 's2-now-1',
+        start_date: '2026-08-08', client_request_id: 's2-now-1',
       }).expect(201);
     const plantingId = p.body.planting.id;
 
@@ -266,7 +266,7 @@ describe('Slice 2 Plantings', () => {
       .send({
         terrace_id: t4.body.id, crop_id: 'crop-grape', variety_id: null,
         container_type_id: plan.body.container.selected_type_id,
-        start_date: '2026-01-01', client_request_id: 's2-event-1',
+        start_date: '2026-08-08', client_request_id: 's2-event-1',
       }).expect(201);
     const plantingId = p.body.planting.id;
 
@@ -309,14 +309,14 @@ describe('Slice 2 Plantings', () => {
       .send({
         terrace_id: t5.body.id, crop_id: 'crop-grape', variety_id: null,
         container_type_id: plan.body.container.selected_type_id,
-        start_date: '2026-01-01', client_request_id: 's2-bad-1',
+        start_date: '2026-08-08', client_request_id: 's2-bad-1',
       }).expect(201);
 
     const res = await request(app.getHttpServer())
       .post(`/api/plantings/${p.body.planting.id}/events`).set('Authorization', `Bearer ${token5}`)
       .send({ action_key: 'made_up_action' })
       .expect(400);
-    expect(String(res.body.message)).toContain('Unknown action');
+    expect(String(res.body.message)).toContain('Action not available');
   });
 
   it('AC-19: cross-user access denied (404)', async () => {
