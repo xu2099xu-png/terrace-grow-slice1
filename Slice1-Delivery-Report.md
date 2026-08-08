@@ -266,7 +266,7 @@ DATABASE_URL=...terrace_grow_cleanroom npx prisma migrate deploy
 
 ### 5.7.5 交付时对应 commit
 
-本报告 §5.7 对应 git commit SHA：见提交时生成的 commit hash（提交信息前缀 `Slice 1: Third-round audit rework — ...`）。
+本报告 §5.7 对应 git commit SHA：**`e636720cf44c223365e84fd37418d2cc8ab7b07c`**（`Slice 1: Third-round audit rework — ...`，2026-08-08）。
 
 ---
 
