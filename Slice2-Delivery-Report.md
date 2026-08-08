@@ -122,4 +122,4 @@ Slice1→Slice2 upgrade DB migrate deploy    → 26→30 tables，用户数据�
 
 ## 7. 交付 commit
 
-本报告对应 git commit SHA：见最终 main HEAD（提交信息前缀 `Slice 2: grape planting flow — ...`）。
+本报告对应 git commit SHA：**`3be043ed6536f0c2bb6eb81afd26b0277c7b1f7b`**（`Slice 2: grape planting flow — ...`，2026-08-08）。
