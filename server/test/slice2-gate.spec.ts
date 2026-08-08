@@ -211,4 +211,43 @@ describe('Slice 2 Gate — closure acceptance tests', () => {
       }),
     ).rejects.toThrow(/unique constraint/i);
   });
+
+  it('Mine next_action = first unfinished action in current stage, then next stage', async () => {
+    // fresh planting in stage_a (action_fixture_1, offset 0-2, today active)
+    const p = await request(app.getHttpServer())
+      .post('/api/plantings')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        terrace_id: terraceId,
+        crop_id: 'crop-grape',
+        variety_id: null,
+        container_type_id: containerTypeId,
+        start_date: new Date().toISOString().slice(0, 10),
+        client_request_id: 'gate-next-action',
+      })
+      .expect(201);
+    const plantingId = p.body.planting.id;
+
+    // nothing done yet -> next is the current stage's first (only) action
+    const mine1 = await request(app.getHttpServer())
+      .get('/api/users/me/plantings')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    const row1 = mine1.body.find((x: any) => x.planting_id === plantingId);
+    expect(row1.next_action).toBe('action_fixture_1');
+
+    // complete stage_a's only action -> current stage done -> next is stage_b's first
+    await request(app.getHttpServer())
+      .post(`/api/plantings/${plantingId}/events`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ action_key: 'action_fixture_1' })
+      .expect(201);
+
+    const mine2 = await request(app.getHttpServer())
+      .get('/api/users/me/plantings')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    const row2 = mine2.body.find((x: any) => x.planting_id === plantingId);
+    expect(row2.next_action).toBe('action_fixture_2'); // stage_b's first, not null
+  });
 });

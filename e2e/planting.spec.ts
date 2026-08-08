@@ -77,6 +77,7 @@ test('S2-E2E-02 NO_MATCH: no start-planting button, no flow entry', async ({ pag
   // Open grape plan (reload to guarantee SPA re-mounts Home).
   await page.goto('/#/');
   await page.reload();
+  await expect(page.getByText('葡萄').first()).toBeVisible();
   await page.getByText('葡萄').first().click();
   await page.waitForURL('**/#/plan/crop-grape');
 

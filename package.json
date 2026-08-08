@@ -12,6 +12,7 @@
     "dev": "npm run db:up && npm run db:push && npm run db:seed && npm --prefix server run build && concurrently -n tsc,server,h5 -c yellow,blue,green \"npm --prefix server run tsc:watch\" \"npm --prefix server run start:watch\" \"npm --prefix h5 run dev\"",
     "test:unit": "npm --prefix server run test:unit",
     "test:integration": "npm --prefix server run test:integration",
+    "test:slice2-gate": "npm --prefix server run test:slice2-gate",
     "test:e2e": "npm --prefix server run test:e2e",
     "test:h5": "npm --prefix h5 run test",
     "test:browser": "playwright test",

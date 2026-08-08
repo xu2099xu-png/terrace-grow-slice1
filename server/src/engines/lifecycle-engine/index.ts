@@ -41,8 +41,8 @@ export interface LifecycleResolution {
   warnings: string[];
 }
 
-/** Convert a Date to the calendar date in Asia/Shanghai (yyyy-mm-dd). */
-function toShanghaiDate(d: Date): { y: number; m: number; day: number } {
+/** Convert a Date to the calendar date in Asia/Shanghai (yyyy-mm-dd parts). */
+export function toShanghaiDate(d: Date): { y: number; m: number; day: number } {
   const parts = new Intl.DateTimeFormat('zh-CN', {
     timeZone: 'Asia/Shanghai',
     year: 'numeric',
@@ -51,6 +51,12 @@ function toShanghaiDate(d: Date): { y: number; m: number; day: number } {
   }).formatToParts(d);
   const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
   return { y: get('year'), m: get('month') - 1, day: get('day') };
+}
+
+/** Format a Date as the Asia/Shanghai calendar date string (yyyy-mm-dd). */
+export function toShanghaiDateString(d: Date): string {
+  const { y, m, day } = toShanghaiDate(d);
+  return `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 /** Day difference based on Asia/Shanghai calendar dates (not UTC calendar). */

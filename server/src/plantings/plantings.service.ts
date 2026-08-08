@@ -2,7 +2,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma.service';
 import { AgriDataService } from '../agri-data.service';
 import { RecommendationDataService } from '../recommendations/recommendation-data.service';
-import { resolveLifecycle } from '../engines/lifecycle-engine';
+import { resolveLifecycle, toShanghaiDateString } from '../engines/lifecycle-engine';
 
 const START_METHOD = 'nursery_plant';
 
@@ -204,7 +204,7 @@ export class PlantingsService {
       return {
         planting_id: planting.id,
         status: 'lifecycle_unavailable',
-        as_of_date: asOf.toISOString().slice(0, 10),
+        as_of_date: toShanghaiDateString(asOf),
         current_stage: null,
         actions: [],
         completed_action_keys: [],
@@ -218,7 +218,7 @@ export class PlantingsService {
     return {
       planting_id: planting.id,
       status: res.status,
-      as_of_date: asOf.toISOString().slice(0, 10),
+      as_of_date: toShanghaiDateString(asOf),
       current_stage: toStageContract(res.current_stage),
       actions: res.current_stage?.actions ?? [],
       completed_action_keys: res.completed_action_keys,
@@ -290,6 +290,14 @@ export class PlantingsService {
     const summaries = await Promise.all(
       plantings.map(async (p) => {
         const { res } = await this.resolveLifecycleForPlanting(p, asOf);
+        // next_action = first unfinished action in current stage; if the whole
+        // current stage is done, fall through to the next stage's first action.
+        const nextAction =
+          res?.current_stage?.actions.find(
+            (action) => !res.completed_action_keys.includes(action),
+          )
+          ?? res?.next_stage?.actions?.[0]
+          ?? null;
         return {
           planting_id: p.id,
           crop_name: p.crop?.name ?? '未知作物',
@@ -297,7 +305,7 @@ export class PlantingsService {
           start_date: p.startDate.toISOString().slice(0, 10),
           status: res?.status ?? p.status,
           current_stage_name: res?.current_stage?.stageName ?? null,
-          next_action: res?.next_stage?.actions?.[0] ?? null,
+          next_action: nextAction,
         };
       }),
     );
