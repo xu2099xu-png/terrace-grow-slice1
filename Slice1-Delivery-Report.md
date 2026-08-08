@@ -270,6 +270,47 @@ DATABASE_URL=...terrace_grow_cleanroom npx prisma migrate deploy
 
 ---
 
+## 5.8 审计收口修复（closure，2026-08-08）
+
+按审计方要求，本轮仅做收口修复，不重做整轮返工、不新增 Slice 2 范围。
+
+### 5.8.1 修复内容
+
+**`/materials/mine` + inventory PUT 的 governance 漏口**（读/写两侧同步封死）：
+
+- **读侧** `AgriDataService.getUserMaterialInventory()`：查询 inventory 时原本 `include: { material: true }` 会原样带出 `SubstrateMaterial`（含 draft）。现改为先查治理允许的材料集合，仅返回 `reviewStatus='approved'`（或 dev+draft 允许）材料对应的库存行——draft 材料名不再通过 `/materials/mine` 泄漏。
+- **写侧** `AgriDataService.setUserMaterialInventory()`：原先对 `material_ids` 不做治理校验直接 `createMany`，draft 材料 ID 可被写入库存并进入后续引擎 `ownedMaterialIds`。现改为写入前用 `review` 过滤：仅允许通过治理的材料入库，draft 材料 ID 直接丢弃，不持久化。
+
+### 5.8.2 新增 production governance 回归测试（2 条）
+
+| 测试 | 验证点 |
+|------|--------|
+| `inventory write gate: PUT drops draft materials, keeps only approved ones` | `APP_ENV=production` 下 PUT `['mat-peat'(approved), 'mat-coco'(draft)]` → GET `/materials/mine` 只含 mat-peat，draft 的 mat-coco 未入库 |
+| `inventory read gate: GET mine never leaks a draft-backed entry` | 预置一条指向 draft 材料（mat-perlite）的历史库存行 → GET `/materials/mine` 不返回该条，材料名不泄漏 |
+
+### 5.8.3 验证结果（clean-room 复现）
+
+```
+npm --prefix server run db:test:setup   → migrate deploy + seed 成功
+npm run test:all
+    → test:unit        24 passed
+    → test:integration 25 passed（integration 16 + governance 9，含新增 2 条）
+    → test:e2e         "All integration tests passed!"
+    → test:h5          2 passed
+npm --prefix server run build           → tsc, 0 errors
+npm --prefix h5 run build               → ok
+```
+
+### 5.8.4 浏览器自动化 waiver
+
+本轮不新增 Playwright / Puppeteer 浏览器级 E2E，按审计方要求记录 **waiver**。当前页面行为验证由 H5 组件测试（vitest + @vue/test-utils + happy-dom）覆盖 NO_MATCH 短路等真实 DOM 渲染路径；完整浏览器自动化留待后续切片按需引入。
+
+### 5.8.5 交付时对应 commit
+
+本报告 §5.8 对应 git commit SHA：见下方最终 main HEAD（提交信息前缀 `Slice 1: closure — inventory governance write/read gate + regression tests`）。
+
+---
+
 ## 6. 已知局限与待办
 
 1. **浏览器自动化**：第三轮已引入 H5 组件测试（vitest + @vue/test-utils + happy-dom）覆盖真实页面 DOM 行为（NO_MATCH 短路等）。如需要完整的浏览器级自动化（Playwright / Puppeteer 真实渲染），可在后续切片引入相应 skill 和测试套件。

@@ -153,4 +153,60 @@ describe('Slice 1 Governance (production-like)', () => {
     await prisma.materialCropRule.updateMany({ data: { reviewStatus: 'draft' } });
     await prisma.environmentRequirement.updateMany({ data: { reviewStatus: 'draft' } });
   });
+
+  it('inventory write gate: PUT drops draft materials, keeps only approved ones', async () => {
+    // promote mat-peat to approved; mat-coco stays draft
+    await prisma.substrateMaterial.update({
+      where: { id: 'mat-peat' },
+      data: { reviewStatus: 'approved' },
+    });
+
+    const res = await request(app.getHttpServer())
+      .put('/api/users/me/materials')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ material_ids: ['mat-peat', 'mat-coco'] })
+      .expect(200);
+    expect(res.body.ok).toBe(true);
+
+    const mine = await request(app.getHttpServer())
+      .get('/api/materials/mine')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    const ids = mine.body.map((r: any) => r.materialId);
+    expect(ids).toContain('mat-peat'); // approved material persisted
+    expect(ids).not.toContain('mat-coco'); // draft material dropped by write gate
+
+    // restore
+    await prisma.substrateMaterial.update({
+      where: { id: 'mat-peat' },
+      data: { reviewStatus: 'draft' },
+    });
+  });
+
+  it('inventory read gate: GET mine never leaks a draft-backed entry', async () => {
+    // create a dedicated user so we control the inventory row directly
+    const auth = await request(app.getHttpServer())
+      .post('/api/auth/anonymous')
+      .send({ device_id: 'gov-device-inventory' })
+      .expect(201);
+    const token2 = auth.body.token;
+    const identity = await prisma.userIdentity.findFirst({
+      where: { provider: 'anonymous_device', providerUid: 'gov-device-inventory' },
+    });
+    if (!identity) throw new Error('identity not found');
+
+    // directly seed a leftover inventory row pointing at a draft material
+    // (simulates legacy data written before the gate existed)
+    await prisma.userMaterialInventory.create({
+      data: { userId: identity.userId, materialId: 'mat-perlite', level: 'enough' },
+    });
+
+    const mine = await request(app.getHttpServer())
+      .get('/api/materials/mine')
+      .set('Authorization', `Bearer ${token2}`)
+      .expect(200);
+    // mat-perlite is draft -> its inventory entry must not appear
+    const ids = mine.body.map((r: any) => r.materialId);
+    expect(ids).not.toContain('mat-perlite');
+  });
 });

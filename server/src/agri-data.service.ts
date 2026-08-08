@@ -152,17 +152,35 @@ export class AgriDataService {
   // ---------- user-owned data (no governance field) ----------
 
   async getUserMaterialInventory(userId: string) {
-    return this.prisma.userMaterialInventory.findMany({
+    const rows = await this.prisma.userMaterialInventory.findMany({
       where: { userId },
       include: { material: true },
     });
+    // Read-side governance gate: an inventory entry backed by a draft material
+    // must never surface (e.g. its name leaking via /materials/mine).
+    const approvedIds = new Set(
+      (
+        await this.prisma.substrateMaterial.findMany({
+          where: this.review,
+          select: { id: true },
+        })
+      ).map((m) => m.id),
+    );
+    return rows.filter((r) => approvedIds.has(r.materialId));
   }
 
   async setUserMaterialInventory(userId: string, materialIds: string[]) {
     await this.prisma.userMaterialInventory.deleteMany({ where: { userId } });
     if (!materialIds || materialIds.length === 0) return { ok: true };
+    // Write-side governance gate: only governed materials may enter the
+    // inventory; draft material ids are dropped, never persisted.
+    const allowed = await this.prisma.substrateMaterial.findMany({
+      where: { id: { in: materialIds }, ...this.review },
+      select: { id: true },
+    });
+    if (allowed.length === 0) return { ok: true };
     await this.prisma.userMaterialInventory.createMany({
-      data: materialIds.map((id) => ({ userId, materialId: id, level: 'enough' })),
+      data: allowed.map((m) => ({ userId, materialId: m.id, level: 'enough' })),
       skipDuplicates: true,
     });
     return { ok: true };
