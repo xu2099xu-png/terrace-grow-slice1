@@ -228,3 +228,28 @@ Seasonal 复用 assessSunlight()，无季节性日照自创算法
 ---
 
 *本报告每条核心 AC 均以「AC → Implementation → Test → Result」对应，无 NOT AUTOMATED 项。*
+
+---
+
+## 9. Closure 修复（2026-08-09，第二 commit）
+
+审计复核发现 6 个与冻结 AC 冲突的实现问题，全部修复，不新增功能：
+
+| # | 问题 | 修复 | 测试 |
+|---|---|---|---|
+| 1 | AC-05 weather hard filter 未执行（只加 warning） | engine `isWeatherHardFiltered`：full weather + temp_out_of_range / frost_risk+frostSensitive → 真正移除出 items；partial/unknown → 保留 | gate「temp out of range hard-filtered」「frost_risk+frostSensitive hard-filtered」「partial/unknown kept」 |
+| 2 | 真实 QWeather adapter 不工作（location=beijing、temp 是 string、缺失 frost 假 false） | location 用坐标（`lng,lat`，来自 CITY_METADATA）；`parseTemp` 安全解析 string/number；缺失 → undefined/'unknown'，frost 绝不假 false | adapter contract：官方 string 响应 `{"tempMin":"-1","tempMax":"12"}` → -1/12 + frost true；缺失 tempMin → unknown |
+| 3 | 真实 LocationResolver 返回第三方行政区字符串 | AMap province/city/district → `findCityByPlaceName` 规范化 → canonical code；北京直辖市区县正确归一 | contract：北京/海淀区 → `{beijing, 北京}`；杭州 → `{hangzhou, 杭州}` |
+| 4 | supported-cities `city_name` 返回 code（beijing/beijing） | 新增服务端 `CITY_METADATA`（code→中文名+坐标），`listSupportedCities` 用中文名 | gate「beijing → 北京」 |
+| 5 | SeasonsService 伪造环境（默认 6h/false） | 默认全部 `null`；无可靠 minSunHours → 不运行 sunlight；无 temp/frost → 不执行对应 filter | gate「null env facts → neutral, no fake 6h/false」 |
+| 6 | Crop Detail 展示所有气候区窗口 | `GET /crops/:id?city_code=` 按 climate zone 过滤；SeasonalNow 跳转带 city_code；无 city context 不写"本气候区" | gate「crop detail + beijing → 仅 north_china calendars」 |
+| - | 缺 city_code 的 date 用 UTC | 复用 `toShanghaiDateString()` | gate「missing city_code → Asia/Shanghai date」 |
+
+测试结果（closure 后）：
+```
+test:slice3-gate   33 passed（engine 21 + API 8 + DB 3 + real-adapter contract 4）
+test:all           EXIT=0（unit 33 + integration 78 + h5 2 + browser 4）
+server/h5 build    EXIT=0
+```
+
+Closure commit SHA：见最终 main HEAD（提交信息前缀 `Slice 3: closure — real provider contracts + hard filters`）。

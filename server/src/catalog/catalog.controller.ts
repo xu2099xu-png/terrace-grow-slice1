@@ -14,8 +14,13 @@ export class CatalogController {
 
   @Public()
   @Get(':id')
-  async detail(@Param('id') id: string) {
-    return this.agri.getCropDetail(id);
+  async detail(@Param('id') id: string, @Query('city_code') cityCode?: string) {
+    let zoneCode: string | undefined;
+    if (cityCode) {
+      const zone = await this.agri.getClimateZoneByCity(cityCode);
+      zoneCode = zone?.code;
+    }
+    return this.agri.getCropDetail(id, zoneCode);
   }
 
   @Public()

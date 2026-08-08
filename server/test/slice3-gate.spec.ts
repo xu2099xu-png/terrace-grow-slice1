@@ -1,9 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma.service';
+import { toShanghaiDateString } from '../src/engines/lifecycle-engine';
+import { HttpWeatherProvider } from '../src/weather/http-weather.provider';
+import { HttpLocationResolver } from '../src/location/http-location.resolver';
 import {
   buildSeasonalRecommendations,
   aggregateWeather,
@@ -222,8 +225,8 @@ describe('Slice 3 Gate — seasonal engine invariants (RED first)', () => {
     expect(sunlightWeight(carrot, null).status).toBe('NEUTRAL');
   });
 
-  // 17. three-day complete weather → temperature rule takes effect
-  it('three-day complete weather: temp clearly out of range → temp_out_of_range', () => {
+  // 17. three-day complete weather → temperature rule is a HARD filter
+  it('three-day complete weather: temp clearly out of range → crop hard-filtered', () => {
     const coldFull = [
       { date: '2026-01-10', tempMinC: 0, tempMaxC: 2, frostRisk: false },
       { date: '2026-01-11', tempMinC: 1, tempMaxC: 3, frostRisk: false },
@@ -232,10 +235,52 @@ describe('Slice 3 Gate — seasonal engine invariants (RED first)', () => {
     const res = buildSeasonalRecommendations(
       input(new Date('2026-01-10T04:00:00.000Z'), [tomato], [tomatoWinter], coldFull),
     );
-    const item = res.items.find((i) => i.crop_id === 'crop-tomato');
     expect(res.weather_data_status).toBe('available');
-    expect(item).toBeDefined();
-    expect(item!.weather_assessment).toBe('temp_out_of_range'); // 3-day mean ~1.3°C < tomato tempMin 10
+    // AC-05: complete reliable weather + temp_out_of_range → NOT in "now" items
+    expect(res.items.find((i) => i.crop_id === 'crop-tomato')).toBeUndefined();
+  });
+
+  // 1b. full weather + frost_risk + frost_sensitive → crop hard-filtered
+  it('three-day complete weather: frost_risk + frost_sensitive → crop hard-filtered', () => {
+    // temps stay inside tomato's range (10..35) so ONLY the frost rule filters
+    const frostFull = [
+      { date: '2026-01-10', tempMinC: -2, tempMaxC: 24, frostRisk: true },
+      { date: '2026-01-11', tempMinC: -3, tempMaxC: 25, frostRisk: true },
+      { date: '2026-01-12', tempMinC: -1, tempMaxC: 23, frostRisk: true },
+    ];
+    const res = buildSeasonalRecommendations(
+      input(new Date('2026-01-10T04:00:00.000Z'), [tomato], [tomatoWinter], frostFull),
+    );
+    expect(res.weather_data_status).toBe('available');
+    expect(res.items.find((i) => i.crop_id === 'crop-tomato')).toBeUndefined();
+  });
+
+  // 3b. frost_risk but crop NOT frost-sensitive → kept (no false positive filter)
+  it('frostRisk=true with frostSensitive=false → crop kept', () => {
+    const frostWarm = [
+      { date: '2026-08-15', tempMinC: 0, tempMaxC: 8, frostRisk: true },
+      { date: '2026-08-16', tempMinC: 1, tempMaxC: 9, frostRisk: true },
+      { date: '2026-08-17', tempMinC: 0, tempMaxC: 8, frostRisk: true },
+    ];
+    const res = buildSeasonalRecommendations(
+      input(new Date('2026-08-15T04:00:00.000Z'), [lettuce], [lettuceDirectSeed], frostWarm),
+    );
+    const item = res.items.find((i) => i.crop_id === 'crop-lettuce');
+    expect(item).toBeDefined(); // lettuce frostSensitive=false → never frost-filtered
+  });
+
+  // 3c. partial / unknown weather → crop kept (no hard filter)
+  it('partial/unknown weather → crop kept (hard filter not executed)', () => {
+    const partial = [
+      { date: '2026-01-10', tempMinC: -5, tempMaxC: 0 },
+      { date: '2026-01-11', tempMinC: -6, tempMaxC: -1 },
+    ];
+    const res = buildSeasonalRecommendations(
+      input(new Date('2026-01-10T04:00:00.000Z'), [tomato], [tomatoWinter], partial),
+    );
+    expect(res.weather_data_status).toBe('partial');
+    expect(res.items.find((i) => i.crop_id === 'crop-tomato')).toBeDefined();
+    expect(res.items.find((i) => i.crop_id === 'crop-tomato')!.weather_assessment).toBe('unknown');
   });
 
   // 17b. three-day complete weather within range → suitable
@@ -246,6 +291,26 @@ describe('Slice 3 Gate — seasonal engine invariants (RED first)', () => {
     const item = res.items.find((i) => i.crop_id === 'crop-lettuce');
     expect(res.weather_data_status).toBe('available');
     expect(item!.weather_assessment).toBe('suitable');
+  });
+
+  // 8. unknown environment facts are never fabricated
+  it('null env facts → neutral, no fake 6h sun / no fake frostSensitive=false', () => {
+    const noEnvCarrot: SeasonalCropRow = {
+      ...carrot,
+      minSunHours: null,
+      frostSensitive: null,
+      tempMin: null,
+      tempMax: null,
+    };
+    // sunlight stays neutral even with a very shady terrace
+    expect(
+      sunlightWeight(noEnvCarrot, { sunHoursMin: 0, sunHoursMax: 2, sunConfidence: 'medium' }).status,
+    ).toBe('NEUTRAL');
+    // crop kept — not filtered or down-weighted by fabricated facts
+    const res = buildSeasonalRecommendations(
+      input(new Date('2026-04-01T04:00:00.000Z'), [noEnvCarrot], [carrotSpring], null),
+    );
+    expect(res.items.some((i) => i.crop_id === 'crop-carrot')).toBe(true);
   });
 });
 
@@ -281,6 +346,36 @@ describe('Slice 3 Gate — API contracts (RED first)', () => {
     const codes = res.body.map((c: any) => c.city_code);
     expect(codes).toContain('beijing'); // seeded climate zone mapping
     expect(codes).not.toContain('nowhere-city');
+  });
+
+  // 7. supported-cities must expose the display name, not the raw code
+  it('supported-cities: beijing → 北京 (canonical code + display name)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/location/supported-cities')
+      .expect(200);
+    const bj = res.body.find((c: any) => c.city_code === 'beijing');
+    expect(bj).toBeTruthy();
+    expect(bj.city_name).toBe('北京');
+  });
+
+  // 9. crop detail scoped to the current climate zone when city_code given
+  it('crop detail + beijing → only north_china sowing calendars', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/crops/crop-lettuce?city_code=beijing')
+      .expect(200);
+    const calendars = res.body.sowingCalendars || [];
+    expect(calendars.length).toBeGreaterThan(0);
+    const zones = new Set(calendars.map((c: any) => c.climateZoneCode));
+    expect(zones.size).toBe(1);
+    expect(zones.has('north_china')).toBe(true);
+  });
+
+  // 10. missing city_code → Asia/Shanghai date (same calendar-day semantics)
+  it('missing city_code returns Asia/Shanghai date', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/seasons/now')
+      .expect(200);
+    expect(res.body.date).toBe(toShanghaiDateString(new Date()));
   });
 
   // 10. draft SowingCalendar must not leak in production
@@ -402,5 +497,96 @@ describe('Slice 3 Gate — DB invariants (SowingCalendar)', () => {
     } finally {
       await prisma.sowingCalendar.deleteMany({ where: { windowKey: key } });
     }
+  });
+});
+
+describe('Slice 3 Gate — real adapter contracts (closure)', () => {
+  const key = process.env.QWEATHER_KEY;
+  const locKey = process.env.LOCATION_API_KEY;
+  afterAll(() => {
+    if (key === undefined) delete process.env.QWEATHER_KEY;
+    else process.env.QWEATHER_KEY = key;
+    if (locKey === undefined) delete process.env.LOCATION_API_KEY;
+    else process.env.LOCATION_API_KEY = locKey;
+  });
+
+  // 4. QWeather official string temps ("-1"/"12") parse to numbers; frost not false
+  it('QWeather string temp response → correct numbers, frost never falsely false', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        code: '200',
+        daily: [
+          { tempMin: '-1', tempMax: '12' },
+          { tempMin: '0', tempMax: '10' },
+          { tempMin: '5', tempMax: '15' },
+        ],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    process.env.QWEATHER_KEY = 'test-key';
+    const p = new HttpWeatherProvider();
+    const out = await p.fetchRecent('beijing', '2026-04-10');
+    vi.unstubAllGlobals();
+    expect(out).toHaveLength(3);
+    expect(out[0].tempMinC).toBe(-1);
+    expect(out[0].tempMaxC).toBe(12);
+    expect(out[0].frostRisk).toBe(true); // -1°C → frost, NOT false
+  });
+
+  // 5. missing temp → frostRisk unknown, never false
+  it('QWeather missing tempMin → tempMinC undefined, frostRisk unknown', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        code: '200',
+        daily: [
+          { tempMax: '12' }, // tempMin missing
+          { tempMin: '3', tempMax: '10' },
+          { tempMin: '4', tempMax: '11' },
+        ],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    process.env.QWEATHER_KEY = 'test-key';
+    const p = new HttpWeatherProvider();
+    const out = await p.fetchRecent('beijing', '2026-04-10');
+    vi.unstubAllGlobals();
+    expect(out[0].tempMinC).toBeUndefined();
+    expect(out[0].frostRisk).toBe('unknown');
+  });
+
+  // 6. AMap Beijing administrative shape → canonical city_code=beijing
+  it('AMap 北京/海淀区 shape → canonical city_code=beijing, city_name=北京', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: '1',
+        regeocode: { addressComponent: { province: '北京市', city: '', district: '海淀区' } },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    process.env.LOCATION_API_KEY = 'test-key';
+    const r = new HttpLocationResolver();
+    const out = await r.resolveCity(39.9, 116.4);
+    vi.unstubAllGlobals();
+    expect(out).toEqual({ city_code: 'beijing', city_name: '北京' });
+  });
+
+  // 6b. non-direct-municipality shape (杭州) also canonicalizes
+  it('AMap 杭州 shape → canonical city_code=hangzhou', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: '1',
+        regeocode: { addressComponent: { province: '浙江省', city: '杭州市', district: '西湖区' } },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    process.env.LOCATION_API_KEY = 'test-key';
+    const r = new HttpLocationResolver();
+    const out = await r.resolveCity(30.2, 120.2);
+    vi.unstubAllGlobals();
+    expect(out).toEqual({ city_code: 'hangzhou', city_name: '杭州' });
   });
 });

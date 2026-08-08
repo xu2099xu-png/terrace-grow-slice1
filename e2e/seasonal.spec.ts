@@ -24,7 +24,7 @@ test('S3-E2E-01 seasonal happy path: recommendation list → 建议直播 → de
 
   // Open unified crop detail.
   await carrotCard.click();
-  await page.waitForURL('**/#/crops/crop-carrot');
+  await page.waitForURL('**/#/crops/crop-carrot**', { timeout: 15000 });
   await expect(page.getByText('胡萝卜').first()).toBeVisible();
   await expect(page.getByText('建议直播').first()).toBeVisible();
 });

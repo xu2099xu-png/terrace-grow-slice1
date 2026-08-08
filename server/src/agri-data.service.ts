@@ -235,13 +235,14 @@ export class AgriDataService {
   /** Supported cities derived from climate mapping (AC-30). */
   async listSupportedCities(): Promise<{ city_code: string; city_name: string }[]> {
     const zones = await this.prisma.climateZone.findMany({ select: { cityCodes: true } });
+    const { CITY_METADATA } = await import('./location/city-metadata');
     const out: { city_code: string; city_name: string }[] = [];
     const seen = new Set<string>();
     for (const z of zones) {
       for (const code of (z.cityCodes as unknown as string[]) || []) {
         if (!seen.has(code)) {
           seen.add(code);
-          out.push({ city_code: code, city_name: code });
+          out.push({ city_code: code, city_name: CITY_METADATA[code]?.name ?? code });
         }
       }
     }
@@ -268,12 +269,16 @@ export class AgriDataService {
   }
 
   /** Crop detail for the unified catalog (AC-15). */
-  async getCropDetail(cropId: string) {
+  async getCropDetail(cropId: string, climateZoneCode?: string) {
     return this.prisma.crop.findUnique({
       where: { id: cropId, ...this.review },
       include: {
         environmentRequirement: { where: this.review },
-        sowingCalendars: { where: this.review },
+        // closure-6: when a climate zone is given, only return that zone's
+        // sowing windows (the detail page is scoped to the user's region).
+        sowingCalendars: {
+          where: { ...(climateZoneCode ? { climateZoneCode } : {}), ...this.review },
+        },
       },
     });
   }

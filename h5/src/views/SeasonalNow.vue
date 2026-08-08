@@ -26,7 +26,7 @@
           v-for="item in result.items"
           :key="item.crop_id"
           class="crop-card"
-          @click="router.push(`/crops/${item.crop_id}`)"
+          @click="goDetail(item.crop_id)"
         >
           <div class="card-head">
             <span class="name">{{ item.crop_name }}</span>
@@ -76,6 +76,15 @@ const route = useRoute();
 const loading = ref(true);
 const error = ref('');
 const result = ref<SeasonalResult | null>(null);
+
+// closure-6: keep the city context when opening the crop detail so the detail
+// page only shows the current climate zone's sowing windows.
+function goDetail(cropId: string) {
+  router.push({
+    path: `/crops/${cropId}`,
+    query: route.query.city_code ? { city_code: String(route.query.city_code) } : {},
+  });
+}
 
 function seasonLabel(s: string): string {
   return { in_window: '现在适合', too_early: '还没到时候', too_late: '已过时令', no_data: '暂无数据' }[s] || s;

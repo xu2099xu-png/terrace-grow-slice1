@@ -60,13 +60,16 @@ export class SeasonsService {
       yieldLevel: c.yieldLevel,
       harvestDaysMin: c.harvestDaysMin,
       harvestDaysMax: c.harvestDaysMax,
-      frostSensitive: false,
+      // Unknown until a governed EnvironmentRequirement is found — never fake
+      // defaults (closure-5): no fabricated 6h sun / frostSensitive=false.
+      frostSensitive: null,
       tempMin: null,
       tempMax: null,
-      minSunHours: 6,
+      minSunHours: null,
     }));
 
-    // Enrich with environment requirement facts (governed).
+    // Enrich with governed environment requirement facts (stays null when
+    // missing / draft-filtered → engine treats it as unknown, no filter).
     const envs = await Promise.all(
       crops.map((c) => this.agri.getCropEnvironmentRequirement(c.id)),
     );

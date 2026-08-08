@@ -40,10 +40,11 @@ export interface SeasonalCropRow {
   yieldLevel: number;
   harvestDaysMin: number | null;
   harvestDaysMax: number | null;
-  frostSensitive: boolean;
+  // null = unknown → no hard filter / no sunlight down-weighting (never fake)
+  frostSensitive: boolean | null;
   tempMin: number | null;
   tempMax: number | null;
-  minSunHours: number; // from EnvironmentRequirement, used for sunlight enhancement
+  minSunHours: number | null; // from EnvironmentRequirement, may be unknown
 }
 
 export interface DailyWeatherRow {
@@ -196,10 +197,25 @@ function assessWeatherForCrop(
   ) {
     return 'temp_out_of_range';
   }
-  if (agg.frostRisk === true && crop.frostSensitive) {
+  if (agg.frostRisk === true && crop.frostSensitive === true) {
     return 'frost_risk';
   }
   return 'suitable';
+}
+
+/** True when reliable full weather data hard-filters this crop out of "now". */
+function isWeatherHardFiltered(
+  crop: SeasonalCropRow,
+  agg: { weather_data_status: WeatherDataStatus; frostRisk: boolean | 'unknown' },
+  assessment: WeatherAssessment,
+): boolean {
+  // AC-05: weather hard filters only run on complete, reliable data.
+  if (agg.weather_data_status !== 'available') return false;
+  if (assessment === 'temp_out_of_range') return true;
+  if (assessment === 'frost_risk' && crop.frostSensitive === true && agg.frostRisk === true) {
+    return true;
+  }
+  return false;
 }
 
 /** Base score from the frozen product priorities (season-first is handled by eligibility). */
@@ -250,6 +266,12 @@ export function buildSeasonalRecommendations(input: SeasonalEngineInput): Season
     if (methods.length === 0) continue;
 
     const weatherAssessment = assessWeatherForCrop(crop, agg);
+    // AC-05: complete reliable weather data that clearly rules a crop out
+    // removes it from "现在可以开始种" — this is a hard filter, not a warning.
+    if (isWeatherHardFiltered(crop, agg, weatherAssessment)) {
+      continue;
+    }
+
     let score = baseScore(crop);
     const reasons: string[] = [];
     const itemWarnings: string[] = [];
@@ -314,7 +336,8 @@ export function sunlightWeight(
   crop: SeasonalCropRow,
   terrace: TerraceEnhancement | null | undefined,
 ): { weight: number; status: string; message: string | null } {
-  if (!terrace) {
+  // No terrace OR unknown crop sunlight requirement → neutral, never fabricated.
+  if (!terrace || crop.minSunHours === null) {
     return { weight: 1, status: 'NEUTRAL', message: null };
   }
   const r = assessSunlight(

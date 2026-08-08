@@ -29,7 +29,7 @@
         />
       </van-cell-group>
 
-      <van-cell-group v-if="calendars.length" inset title="播种窗口（本气候区）">
+      <van-cell-group v-if="calendars.length" :inset="true" :title="calendarTitle">
         <van-cell
           v-for="c in calendars"
           :key="c.id"
@@ -43,14 +43,20 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import api from '../api/client';
 
 const props = defineProps<{ id: string }>();
 const router = useRouter();
+const route = useRoute();
 const loading = ref(true);
 const error = ref('');
 const crop = ref<any>(null);
+const hasCityContext = computed(() => !!route.query.city_code);
+
+const calendarTitle = computed(() =>
+  hasCityContext.value ? '播种窗口（本气候区）' : '播种窗口',
+);
 
 const difficultyLabel = computed(() => {
   const d = crop.value?.difficulty;
@@ -70,7 +76,12 @@ async function load() {
   loading.value = true;
   error.value = '';
   try {
-    const res = await api.get(`/crops/${props.id}`);
+    // closure-6: scope sowing windows to the current climate zone when the
+    // user came from a seasonal recommendation (city_code in the query).
+    const query = route.query.city_code
+      ? `?city_code=${encodeURIComponent(String(route.query.city_code))}`
+      : '';
+    const res = await api.get(`/crops/${props.id}${query}`);
     crop.value = res.data;
   } catch (e: any) {
     error.value = e.response?.data?.message || '加载失败';

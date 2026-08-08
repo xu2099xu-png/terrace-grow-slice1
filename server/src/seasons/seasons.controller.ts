@@ -2,6 +2,7 @@ import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { Public } from '../auth/public.decorator';
 import { OptionalAuthGuard } from './optional-auth.guard';
 import { SeasonsService } from './seasons.service';
+import { toShanghaiDateString } from '../engines/lifecycle-engine';
 
 @Controller('seasons')
 export class SeasonsController {
@@ -13,7 +14,7 @@ export class SeasonsController {
   async now(@Query('city_code') cityCode: string | undefined, @Req() req: any) {
     if (!cityCode) {
       return {
-        date: new Date().toISOString().slice(0, 10),
+        date: toShanghaiDateString(new Date()), // closure: same calendar-day as the happy path
         city_code: null,
         location_status: 'unavailable',
         climate_data_status: 'unsupported',
