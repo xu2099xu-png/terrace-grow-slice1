@@ -47,6 +47,72 @@ Freeze approval.
   "raw_source_sha256": "a880ff2c2fc76f7e15c42dcef9476bd353fd48a2ce3ea397140358211636700e",
   "normalized_mainland_hierarchy_sha256": "1e72730c812e5306081dda3745086d6cfef58333332aad2faf0f8bd97b8960f0",
   "aliases_supersessions_initial_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "representative_point_source_manifest": {
+    "dataset_name": "mca-national-geonames-representative-points-mainland-2026-08-09",
+    "source_owner": "中华人民共和国民政部 / 中国-国家地名信息库",
+    "source_endpoint": "POST https://dmfw.mca.gov.cn/stname/listPub",
+    "source_page_url": "https://dmfw.mca.gov.cn/search.html",
+    "license_or_usage_basis": "Government public geographical-name information queried from the official MCA National Geographical Names Information Database; no open-source license is asserted. Redistribution must preserve source attribution and stop if the official usage terms disallow repository snapshots.",
+    "snapshot_date": "2026-08-09",
+    "import_date": "2026-08-09",
+    "source_version": "National Geographical Names Information Database live representative-point snapshot queried on 2026-08-09",
+    "frontend_projection_evidence_urls": [
+      "https://dmfw.mca.gov.cn/search.html",
+      "https://dmfw.mca.gov.cn/config/mapConfig.js",
+      "https://dmfw.mca.gov.cn/js/map/baseMap.js",
+      "https://dmfw.mca.gov.cn/js/map.js?v=20251201"
+    ],
+    "application_crs_freeze": "The application freezes returned longitude/latitude pairs as EPSG:4326 input because the official frontend treats source data as EPSG:4326 before transforming to EPSG:3857, including GeoJSON dataProjection EPSG:4326 to featureProjection EPSG:3857 and fromLonLat handling in baseMap.js. This is an application projection contract, not an independently published MCA geodetic-datum assertion.",
+    "fetch_parameters": {
+      "stName": "",
+      "code": "",
+      "year": 0,
+      "searchType": "模糊匹配",
+      "size": 100,
+      "pages": [
+        { "placeTypeCode": "21200", "total": 34, "pages": [1] },
+        { "placeTypeCode": "21300", "total": 334, "pages": [1, 2, 3, 4] },
+        { "placeTypeCode": "21400", "total": 2849, "pages": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] }
+      ]
+    },
+    "canonical_source_record_count": 3217,
+    "coordinate_source": "Coordinates come from gdm.type=multipoint and gdm.coordinates[0]=[longitude,latitude]. Longitude must be finite in [-180,180] and latitude must be finite in [-90,90]. They are provider representative lookup points, not geometric centroids, even if existing model or public field names remain centroid_lng/centroid_lat. They must never be treated as household precision.",
+    "canonical_source_record_property_order": ["id", "standard_name", "place_type_code", "province_name", "city_name", "area_name", "area", "gdm"],
+    "canonical_source_record_sort": "ascending tuple (place_type_code, area, standard_name, id) using deterministic string comparison",
+    "canonical_source_artifact": "mca-stname-listPub-representative-points-canonical-3217-2026-08-09.json",
+    "canonical_source_sha256_rule": "JSON.stringify UTF-8, no trailing newline",
+    "canonical_source_sha256": "0a89d533b11a9ade4a4aa331221e4f168ed00eafbd841ba285dd2eaa62a347ef",
+    "final_selection_rule": "Iterate hierarchy source order. Expected point place_type_code is 21200 for province, 21300 for city, and 21400 for district. Match exact hierarchy name plus area as a decimal string of at least 6 digits before area.slice(0,6)==admin_code; observed area forms may be 6, 9, or 12 digits. Require gdm.type=multipoint, coordinates[0]=[longitude,latitude], finite longitude in [-180,180], and finite latitude in [-90,90]. Duplicate exact candidates sort by id ascending.",
+    "final_selection_rule_resolved_count": 3207,
+    "sole_duplicate_exact_candidate_resolution": {
+      "admin_code": "370705",
+      "name": "奎文区",
+      "selected_id": "4a652ef9985ff54f531a6e4c10995abd",
+      "rejected_id": "871969fd3092ea5ffac64607978af71e"
+    },
+    "area_code_anomalies": [
+      { "admin_code": "360423", "id": "9756500e08cc90e660b6a0cd4636ea47", "standard_name": "武宁县", "place_type_code": "21400", "province_name": "江西省", "city_name": "九江市", "area_name": "武宁县", "area": "360400999", "point": [115.0872574, 29.2489293], "resolution_rule": "ancestor_name_type" }
+    ],
+    "representative_point_exceptions": [
+      { "admin_code": "340621", "id": "9a05cc8eb748c7811e259eb927f484f0", "standard_name": "濉溪镇", "place_type_code": "21500", "province_name": "安徽省", "city_name": "淮北市", "area_name": "濉溪县", "area": "340621100", "gdm": { "type": "multipoint", "coordinates": [[116.7633648, 33.9210541]] }, "notice_url": null },
+      { "admin_code": "653132", "id": "663fbb0d8eff2fa6dab5ea692b44ea49", "standard_name": "新华镇", "place_type_code": "21500", "province_name": "新疆维吾尔自治区", "city_name": "喀什地区", "area_name": "叶城县", "area": "653126109", "gdm": { "type": "multipoint", "coordinates": [[76.6590778, 36.3982468]] }, "notice_url": "https://www.xinjiang.gov.cn/xinjiang/tzgg/202603/285e5d25b8ad4eae8df6b0f0efe847f6.shtml" },
+      { "admin_code": "659013", "id": "9ed00d74a2a2eb420fd4bdfc3a6f3c33", "standard_name": "草湖镇", "place_type_code": "21500", "province_name": "新疆维吾尔自治区", "city_name": "草湖市", "area_name": null, "area": "659013100", "gdm": { "type": "multipoint", "coordinates": [[76.0150158405304, 39.2918246984482]] }, "notice_url": "https://www.xinjiang.gov.cn/xinjiang/tzgg/202604/3691350b13064945947d8f78933ccb3e.shtml" }
+    ],
+    "representative_point_exceptions_notice_basis": "340621 is a same-district representative town record, not a separately notice-backed government-seat assertion. Xinjiang official notices freeze the new Cenling County (岑岭县) government seat at 新华镇 and Caohu City government seat at 草湖镇. The 653132 source record retains area_name 叶城县 because it predates the new county.",
+    "representative_point_exceptions_sort": "ascending admin_code",
+    "representative_point_exceptions_artifact": "mca-representative-point-exceptions-3-2026-08-09.json",
+    "representative_point_exceptions_sha256_rule": "JSON.stringify UTF-8, no trailing newline",
+    "representative_point_exceptions_sha256": "d200726c2d38c32d9d0a94b6d54f225852e9dc47fcebaad440fe790dc6e1bdda",
+    "final_normalized_point_row_property_order": ["admin_code", "centroid_lng", "centroid_lat", "source_record_id", "resolution_rule"],
+    "final_normalized_point_row_order": "hierarchy source order",
+    "final_normalized_point_artifact": "mca-mainland-normalized-representative-points-3211-2026-08-09.json",
+    "final_normalized_point_sha256_rule": "JSON.stringify UTF-8, no trailing newline",
+    "final_resolution_rule_counts": { "code_name_type": 3207, "ancestor_name_type": 1, "government_seat_exception": 3 },
+    "resolution_rule_label_note": "The frozen machine label government_seat_exception covers all three explicit representative-point exception rows and does not assert that every row has a separate government-seat notice.",
+    "final_normalized_point_row_count": 3211,
+    "final_normalized_point_sha256": "243a6c3106106293f6a1e3e4427dcfcb87408e1f2f6cc5e4fc50cae67376763b",
+    "validation": "Catalog validation must prove gdm.type=multipoint, coordinates[0] present, finite longitude in [-180,180], finite latitude in [-90,90], and all 3211 enabled hierarchy rows resolved to representative points."
+  },
   "municipality_parent_rule": "北京、天津、上海、重庆 keep the province-level municipality row as parent; their district rows have parent_admin_code equal to the municipality code and no fake city row is generated.",
   "code_retirement_policy": "Initial Slice 6 mainland snapshot has no disabled/retired rows. Later code changes, withdrawals, merges, splits, and renames must be added as explicit alias/supersession rows with source date, old code, new code or disabled-only resolution, reviewer, and checksum before release."
 }
@@ -70,6 +136,19 @@ after excluding Hong Kong and Macao and preserving source order. Provider
 geocode responses, weather provider responses, and frontend hardcoded lists are
 not allowed catalog sources.
 
+Freeze Gate data-file checksums cover only upstream or frozen pre-product
+inputs: raw hierarchy snapshot, normalized hierarchy rows, initial
+alias/supersession rows, canonical 3217 representative-point source artifact
+`mca-stname-listPub-representative-points-canonical-3217-2026-08-09.json`, the
+3-row representative-point exception artifact
+`mca-representative-point-exceptions-3-2026-08-09.json`, and final 3211
+normalized representative-point artifact
+`mca-mainland-normalized-representative-points-3211-2026-08-09.json`. Generated
+product files such as `regions.json`, popular cities, climate direct mappings,
+climate anchors, and delivery packaging artifacts are implementation outputs;
+their exact hashes are Delivery Gate and final-report evidence, not pre-product
+Freeze inputs.
+
 ### 0.2 Calendar Algorithm Manifest
 
 ```json
@@ -86,7 +165,7 @@ not allowed catalog sources.
   "lunar_js_sha256": "9750324bfe1aa63c146f8c72b1143df924466c11c8a5277d7d9225c541a18aaa",
   "package_json_sha256": "39b062864077ca2980683db5f209cb78339f74e4d5c1dea77b4a6263da116c02",
   "npm_dist_integrity": "sha512-u/KYiwPIBo/0bT+WWfU7qO1d+aqeB90Tuy4ErXenr2Gam0QcWeezUvtiOIyXR7HbVnW2I1DKfU0NBvzMZhbVQw==",
-  "supported_gregorian_range": {
+  "application_supported_gregorian_range": {
     "inclusive_start": "1900-01-31",
     "inclusive_end": "2100-12-31",
     "outside_range_behavior": "date and weekday remain populated from the Asia/Shanghai Gregorian civil day; lunar.status=unavailable, lunar.month=null, lunar.day=null, and solar_term=null"
@@ -109,8 +188,8 @@ Golden vectors:
 | Solar-term day | `2024-06-21` | `2024-06-21` | `五` | `五` | `十六` | `夏至` | available |
 | Non-solar-term day | `2024-02-24` | `2024-02-24` | `六` | `正` | `十五` | null | available |
 | Supported-range start | `1900-01-31` | `1900-01-31` | `三` | `正` | `初一` | null | available |
-| Below supported range | `1899-12-31` | `1899-12-31` | `日` | null | null | null | unavailable |
-| Above supported range | `2101-01-01` | `2101-01-01` | `六` | null | null | null | unavailable |
+| Below app-supported Gregorian range | `1899-12-31` | `1899-12-31` | `日` | null | null | null | unavailable |
+| Above app-supported Gregorian range | `2101-01-01` | `2101-01-01` | `六` | null | null | null | unavailable |
 
 Checksum reproduction command:
 
@@ -137,9 +216,8 @@ Shared rules for all QWeather HTTP interfaces:
   exhaustion, or auth failure returns weather `unavailable`, not a retry against
   `climate_area_code`, city, legacy `city_code`, or a representative district;
 - `metadata.attributions[]` is the current v1 attribution path and is preserved
-  in order; if a provider warning payload includes legacy `refer.sources[]`, it
-  must also be preserved in order without rewriting because the QWeather
-  attribution terms require warning source text to be displayed unchanged;
+  in order; weather-warning `alerts[].senderName` values are preserved as
+  warning source names without rewriting;
 - numeric provider ratios consumed from `humidity` and precipitation
   `probability` paths are valid only when finite and within `[0, 1]`; public
   `humidity_percent` and `precipitation_probability_percent` are computed as
@@ -156,7 +234,7 @@ Shared rules for all QWeather HTTP interfaces:
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Display current weather | `GET /weather/v1/current/{latitude}/{longitude}` | `https://dev.qweather.com/en/docs/api/weather/weather-current/` | `metadata.tag`, `condition.text`, `condition.code`, `temperature.value`, `temperature.unit`, `humidity`, `wind.direction.compass`, `wind.direction.degree`, `wind.speed.value`, `wind.speed.unit`, `wind.scale`, `precipitation.amount.value`, `precipitation.amount.unit`, `precipitation.intensity.value`, `precipitation.intensity.unit`, `precipitation.type` | `metadata.attributions[]` | `qweather-current-v1-display.fixture.json` | `b33eb93a7e52ebdfdca0a55d10fe6d8b7b7b2b93c89a05c65b904c3d5ebab3bd` | `qweather-current-v1-display-parser@1` |
 | Agricultural/display daily forecast | `GET /weather/v1/daily/{latitude}/{longitude}` with `days=3` for agricultural conversion | `https://dev.qweather.com/en/docs/api/weather/weather-daily-forecast/` | `metadata.tag`, `days[].forecastStartTime`, `days[].forecastEndTime`, `days[].temperatureMin.value`, `days[].temperatureMin.unit`, `days[].temperatureMax.value`, `days[].temperatureMax.unit`, `days[0].daytime.condition.text`, `days[0].daytime.condition.code`, `days[0].daytime.precipitation.amount.value`, `days[0].daytime.precipitation.amount.unit`, `days[0].daytime.precipitation.probability`, `days[0].daytime.precipitation.type`, `days[0].daytime.humidity`, `days[0].daytime.wind.direction.compass`, `days[0].daytime.wind.speed.value`, `days[0].daytime.wind.speed.unit`, `days[0].daytime.wind.scale` | `metadata.attributions[]`; frost is always internal `unknown` because QWeather daily v1 provides no explicit frost fact consumed by Slice 6 | `qweather-daily-v1-agri-display.fixture.json` | `6d513171fa80d53565317cb4e4ac52077b5b7b4c5447c38d764bfe1d96ca915d` | `qweather-daily-v1-agri-display-parser@1` |
-| Display weather warning | `GET /weatheralert/v1/current/{latitude}/{longitude}` | `https://dev.qweather.com/en/docs/api/warning/weather-alert/` | `metadata.tag`, `metadata.zeroResult`, `refer.sources[]`, `alerts[].id`, `alerts[].senderName`, `alerts[].issuedTime`, `alerts[].eventType.name`, `alerts[].eventType.code`, `alerts[].severity`, `alerts[].certainty`, `alerts[].color.code`, `alerts[].effectiveTime`, `alerts[].onsetTime`, `alerts[].expireTime`, `alerts[].headline`, `alerts[].description` | `metadata.attributions[]`, `refer.sources[]`, `alerts[].senderName` | `qweather-weatheralert-v1-display.fixture.json` | `3178e3d29692cfdbe7d6ea70ec018b9a7fc7f631247e2b5ba6b1fff7ce58d46e` | `qweather-weatheralert-v1-display-parser@1` |
+| Display weather warning | `GET /weatheralert/v1/current/{latitude}/{longitude}` | `https://dev.qweather.com/en/docs/api/warning/weather-alert/` | `metadata.tag`, `metadata.zeroResult`, `alerts[].id`, `alerts[].senderName`, `alerts[].issuedTime`, `alerts[].eventType.name`, `alerts[].eventType.code`, `alerts[].severity`, `alerts[].certainty`, `alerts[].color.code`, `alerts[].effectiveTime`, `alerts[].onsetTime`, `alerts[].expireTime`, `alerts[].headline`, `alerts[].description` | `metadata.attributions[]`, `alerts[].senderName` | `qweather-weatheralert-v1-display.fixture.json` | `ad76821d0dcc423e84e530ac7c3dd3c865d685ba093db165cb386dbd68c15b2c` | `qweather-weatheralert-v1-display-parser@1` |
 
 Canonical fixture checksums are computed from minified UTF-8 JSON with
 `JSON.stringify(fixtureObject)` and no trailing newline. The implementation must
@@ -174,7 +252,7 @@ Canonical QWeather fixture bodies:
 ```
 
 ```json
-{"metadata":{"tag":"s6-weatheralert-v1-fixture","zeroResult":false,"attributions":["https://developer.qweather.com/attribution.html","Alert data may be delayed or out of date. Refer to official sources for the latest data."]},"refer":{"sources":["杭州市气象台"]},"alerts":[{"id":"202608090001","senderName":"杭州市气象台","issuedTime":"2026-08-09T10:00+08:00","eventType":{"name":"暴雨","code":"1003"},"severity":"moderate","certainty":"likely","color":{"code":"blue","red":30,"green":50,"blue":205,"alpha":1},"effectiveTime":"2026-08-09T10:00+08:00","onsetTime":"2026-08-09T11:00+08:00","expireTime":"2026-08-09T20:00+08:00","headline":"杭州市气象台发布暴雨蓝色预警","description":"预计今天局部有短时强降雨。"}]}
+{"metadata":{"tag":"s6-weatheralert-v1-fixture","zeroResult":false,"attributions":["https://developer.qweather.com/attribution.html","Alert data may be delayed or out of date. Refer to official sources for the latest data."]},"alerts":[{"id":"202608090001","senderName":"杭州市气象台","issuedTime":"2026-08-09T10:00+08:00","eventType":{"name":"暴雨","code":"1003"},"severity":"moderate","certainty":"likely","color":{"code":"blue","red":30,"green":50,"blue":205,"alpha":1},"effectiveTime":"2026-08-09T10:00+08:00","onsetTime":"2026-08-09T11:00+08:00","expireTime":"2026-08-09T20:00+08:00","headline":"杭州市气象台发布暴雨蓝色预警","description":"预计今天局部有短时强降雨。"}]}
 ```
 
 ## 1. Product Contract
@@ -313,10 +391,13 @@ Rules:
   referenced frozen manifest. `TBD` is not acceptable for the dataset snapshot at
   implementation time.
 - The frozen manifest must include exact empty-to-fill fields for:
-  source owner, source URL, license or usage basis, snapshot date, source
+  source owner, source URLs, license or usage basis, snapshot date, source
   version, import date, province row count, city/prefecture row count,
-  district/county row count, disabled/retired row count, each data-file checksum,
-  and canonical code standard.
+  district/county row count, disabled/retired row count, canonical code
+  standard, and Freeze-input checksums for the raw hierarchy, normalized
+  hierarchy, initial aliases, canonical point source, point exceptions, and
+  normalized representative points. Generated product data-file checksums are
+  Delivery Gate evidence, not pre-product Freeze inputs.
 - `admin_code` is the canonical administrative code from the frozen standard.
   Internal aliases may exist only to preserve old inputs or retired codes; public
   selected/current region payloads use canonical codes.
@@ -332,13 +413,15 @@ Rules:
   not store or emit a fake city code.
 - Unknown, duplicate, orphaned, or cyclic region rows are migration or seed gate
   failures.
-- District centroid coordinates are for provider lookup and nearest-proxy
-  calculation only; they are not a household location.
+- District `centroid_lng`/`centroid_lat` values are MCA representative lookup
+  points for provider lookup and nearest-proxy calculation only; they are not
+  geometric centroids and not household locations.
 
 The frozen administrative-region source manifest is S6 section 0.1. Product
-implementation may add centroid and climate metadata, but the code/name/hierarchy
-rows, row counts, municipality semantics, and source checksums in section 0.1
-must remain unchanged unless this AC is amended and re-frozen.
+implementation may add climate metadata, but the code/name/hierarchy rows,
+representative-point rows, row counts, municipality semantics, and source
+checksums in section 0.1 must remain unchanged unless this AC is amended and
+re-frozen.
 
 ### S6-AC-03 Region Directory API Contract
 
@@ -765,22 +848,22 @@ Rules:
 - A civil day boundary is exactly `00:00:00` in Asia/Shanghai.
 - `date`, `weekday`, and `timezone` are always populated from the
   Asia/Shanghai Gregorian civil day, including when lunar/solar-term calculation
-  is outside the supported range or otherwise unavailable.
+  is outside the application-supported Gregorian range or otherwise unavailable.
 - `SEASON_DATE` may affect this only in development/test, and remains forbidden
   in production.
 - Lunar and solar-term calculation must use a pinned local algorithm or table.
 - Before this AC is frozen, the calendar manifest must fill exact values for:
-  local library or table name, exact version, checksum, provenance, supported
-  date range, and algorithm version. `TBD` is not acceptable for Freeze or
-  implementation.
+  local library or table name, exact version, checksum, provenance,
+  application-supported Gregorian date range, and algorithm version. `TBD` is
+  not acceptable for Freeze or implementation.
 - Lunar date is computed for the Asia/Shanghai civil day.
 - Solar-term instants are converted to Asia/Shanghai and displayed only on the
   corresponding local civil date.
 - Freeze requires authoritative golden vectors for representative dates,
   including 23:59:59/00:00 day-boundary behavior, Chinese New Year, leap lunar
   month behavior, a solar-term instant crossing a UTC/local-date boundary, a
-  normal day, a non-solar-term day, and a supported-range-outside unavailable
-  case.
+  normal day, a non-solar-term day, and an application-supported-Gregorian-range
+  outside unavailable case.
 - Runtime calculation must not depend on external network calls.
 - Lunar date and solar term are display-only.
 - Lunar date or solar term must not affect seasonal recommendations, weather
@@ -840,9 +923,8 @@ Rules:
 - For HTTP QWeather, H5 must visibly display `和风天气/QWeather` and
   `https://www.qweather.com`.
 - For HTTP QWeather, provider `metadata.attributions[]` and weather-warning
-  source names must be passed through and displayed completely without
-  rewriting. Legacy `refer.sources[]`, if present in a warning payload, must also
-  be preserved without rewriting.
+  `alerts[].senderName` source names must be passed through and displayed
+  completely without rewriting.
 - For `off` and `mock`, attribution uses the contract-defined null/static values
   and must not pretend to be a real external provider.
 - Weather summary is display-only unless transformed into the existing frozen
@@ -880,9 +962,8 @@ coordinates beyond catalog centroids, JWTs, user identifiers, or Authorization
 headers.
 
 Weather cache rows must preserve parsed attribution data, including QWeather
-`metadata.attributions[]`, any legacy warning `refer.sources[]`, and
-weather-warning source names, so cache hits display the same visible attribution
-as provider responses.
+`metadata.attributions[]` and weather-warning `alerts[].senderName` source
+names, so cache hits display the same visible attribution as provider responses.
 
 TTL rules:
 
@@ -1079,6 +1160,14 @@ Final Slice 6 gate must include automated coverage for:
   `level=city` child query returning `[]`, popular-city `display_area_code`
   semantics, and no frontend hardcoded full directory or hardcoded four
   municipality codes;
+- representative-point source gates: canonical 3217 point-source row count and
+  checksum, 3-row exception manifest count and checksum, final 3211 normalized
+  point-row count and checksum, deterministic hierarchy-order join, documented
+  武宁县 anomaly, 3 explicit representative-point exceptions including the 2
+  notice-backed new-unit government seats, `area` decimal string length/form
+  validation before `area.slice(0,6)`, `gdm.type=multipoint`,
+  `coordinates[0]`, finite longitude in [-180,180], finite latitude in [-90,90],
+  and all 3211 enabled rows resolved;
 - nearest-proxy invariants: Haversine distance, enabled governed anchors only,
   distance in km, tie by proxy anchor `climate_area_code` ascending, a
   `selected_area_code != climate_area_code` fixture, and every enabled district
@@ -1099,8 +1188,9 @@ Final Slice 6 gate must include automated coverage for:
   change from Slice 3/5 regression expectations;
 - today calendar Asia/Shanghai civil date, `00:00:00` day boundary, weekday,
   pinned lunar/solar-term golden vectors, 23:59:59/00:00 edge cases, Chinese New
-  Year, leap month, solar-term UTC/local-date boundary, supported-range-outside
-  unavailable state, and no external network dependency;
+  Year, leap month, solar-term UTC/local-date boundary,
+  application-supported-Gregorian-range outside unavailable state, and no
+  external network dependency;
 - weather display available, partial, unavailable, cache hit, expired/corrupt
   miss, source attribution, updated time, current/min/max temperature,
   precipitation fields, and no defaulted facts;
@@ -1118,8 +1208,8 @@ Final Slice 6 gate must include automated coverage for:
   current, daily, and warning interface it must freeze the official supported
   endpoint path and version, official documentation URL, documentation snapshot
   date, auth header and host, exact consumed JSON paths, attribution JSON paths,
-  and fixture checksum. Any `TBD` in this manifest forbids Freeze and
-  implementation.
+  fixture checksum, and parser version. Tests must fail on undocumented parser
+  paths. Any `TBD` in this manifest forbids Freeze and implementation.
 - Existing Slice 3 agricultural Daily Forecast v1 must not regress or be
   replaced by a v7 daily schema: it remains
   `/weather/v1/daily/{latitude}/{longitude}`, parses
@@ -1132,10 +1222,9 @@ Final Slice 6 gate must include automated coverage for:
 - H5 QWeather attribution is asserted as a visible anchor with accessible name
   exactly `和风天气/QWeather` and `href` exactly `https://www.qweather.com`;
 - QWeather `metadata.attributions[]` array order and content are preserved
-  without rewriting; legacy warning `refer.sources[]`, if present, is also
-  preserved; weather-warning source names are displayed completely; cache hits
-  display the same attribution; `off` and `mock` modes do not display or return
-  QWeather attribution;
+  without rewriting; weather-warning `alerts[].senderName` source names are
+  displayed completely; cache hits display the same attribution; `off` and
+  `mock` modes do not display or return QWeather attribution;
 - TerraceWizard active selection auto-next and prefill no auto-next;
 - legacy cityCode migration for all 17 legacy values with
   Beijing/Tianjin/Shanghai mapped to municipality canonical codes, all other
@@ -1190,9 +1279,11 @@ The Slice 6 Delivery Report must include:
   `https://dev.qweather.com/docs/terms/attribution/`,
 - region dataset manifest with exact source owner, source URL, license or usage
   basis, snapshot date, source version, import date, row counts, checksums,
-  canonical code standard, and code change/withdrawal strategy,
+  canonical code standard, representative-point source manifest, and code
+  change/withdrawal strategy,
 - calendar manifest with exact local library/table name, version, checksum,
-  provenance, supported range, algorithm version, and golden-vector evidence,
+  provenance, application-supported Gregorian range, algorithm version, and
+  golden-vector evidence,
 - explicit statement that no new crop/variety/recipe/soil/lifecycle/sowing
   content or changed seasonal filtering semantics were introduced, and that
   Slice 6 added only the allowed governed region-to-climate mapping data and

@@ -237,8 +237,8 @@ Authorization headers, or precise user coordinates. Catalog centroids may be use
 for lookup but should not be duplicated beyond the parsed cache fields unless the
 AC explicitly allows it. `attribution` is stored only after validation and must
 preserve the exact public attribution data used by H5, including QWeather
-`metadata.attributions[]`, any legacy warning `refer.sources[]`, and
-weather-warning source names.
+`metadata.attributions[]` and weather-warning `alerts[].senderName` source
+names.
 
 ### 4.5 Calendar Cache
 
@@ -256,7 +256,7 @@ Before implementation, the frozen AC or manifest must name:
 
 - calendar algorithm/table version,
 - source/provenance,
-- date coverage range,
+- application-supported Gregorian date coverage range,
 - checksum if table-backed,
 - golden fixture dates.
 
@@ -313,15 +313,102 @@ The administrative source manifest is frozen in AC section 0.1:
 - normalized mainland hierarchy SHA-256:
   `1e72730c812e5306081dda3745086d6cfef58333332aad2faf0f8bd97b8960f0`,
 - initial alias/supersession SHA-256 for minified `[]`:
-  `4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`.
+  `4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`,
+- representative point source: owner `中华人民共和国民政部 / 中国-国家地名信息库`,
+  source page `https://dmfw.mca.gov.cn/search.html`, endpoint
+  `POST https://dmfw.mca.gov.cn/stname/listPub`, same government-public
+  information usage basis with no open-source license asserted, snapshot/import
+  date `2026-08-09`, source version "National Geographical Names Information
+  Database live representative-point snapshot queried on 2026-08-09";
+- representative point projection evidence URLs:
+  `https://dmfw.mca.gov.cn/search.html`,
+  `https://dmfw.mca.gov.cn/config/mapConfig.js`,
+  `https://dmfw.mca.gov.cn/js/map/baseMap.js`, and
+  `https://dmfw.mca.gov.cn/js/map.js?v=20251201`. The application freezes
+  returned longitude/latitude pairs as EPSG:4326 input because the official
+  frontend treats source data as EPSG:4326 before transforming to EPSG:3857,
+  including GeoJSON `dataProjection` EPSG:4326 to `featureProjection` EPSG:3857
+  and `fromLonLat` handling in `baseMap.js`; this is an application projection
+  contract, not an independently published MCA geodetic-datum assertion;
+- representative point full-fetch parameters: `stName=""`, `code=""`,
+  `year=0`, `searchType=模糊匹配`, `size=100`, with `placeTypeCode=21200`
+  total 34 page 1, `21300` total 334 pages 1..4, and `21400` total 2849 pages
+  1..29; canonical source rows total 3217;
+- representative point coordinates come from `gdm.type=multipoint` and
+  `gdm.coordinates[0]=[longitude,latitude]`; longitude must be finite in
+  [-180,180] and latitude must be finite in [-90,90]. These are provider
+  representative lookup points, not geometric centroids or household precision,
+  even though existing model/public fields may remain
+  `centroid_lng`/`centroid_lat`;
+- canonical point-source record property order is exactly
+  `{id,standard_name,place_type_code,province_name,city_name,area_name,area,gdm}`,
+  sorted ascending by `(place_type_code, area, standard_name, id)` using
+  deterministic string comparison and hashed as `JSON.stringify` UTF-8 with no
+  trailing newline. Frozen artifact:
+  `mca-stname-listPub-representative-points-canonical-3217-2026-08-09.json`;
+  SHA-256:
+  `0a89d533b11a9ade4a4aa331221e4f168ed00eafbd841ba285dd2eaa62a347ef`;
+- final selection iterates hierarchy source order, expects point type
+  21200/21300/21400 by hierarchy level, matches exact name plus `area` as a
+  decimal string of at least 6 digits before `area.slice(0,6)==admin_code`
+  (observed forms are 6, 9, or 12 digits), requires `gdm.type=multipoint`,
+  `coordinates[0]`, finite longitude in [-180,180], and finite latitude in
+  [-90,90], and sorts duplicate exact candidates by id ASC. This resolves 3207
+  rows, including the
+  sole duplicate exact-candidate case `370705` 奎文区 where id
+  `4a652ef9985ff54f531a6e4c10995abd` wins over
+  `871969fd3092ea5ffac64607978af71e`;
+- documented area-code anomaly: `360423` 武宁县 uses the unique exact
+  name/type/province/city record id `9756500e08cc90e660b6a0cd4636ea47`, source
+  area `360400999`, point `[115.0872574,29.2489293]`, resolution
+  `ancestor_name_type`;
+- representative-point exception manifest is 3 rows sorted by `admin_code`,
+  property order exactly
+  `{admin_code,id,standard_name,place_type_code,province_name,city_name,area_name,area,gdm,notice_url}`,
+  hashed as `JSON.stringify` UTF-8 with no trailing newline. Frozen artifact:
+  `mca-representative-point-exceptions-3-2026-08-09.json`; SHA-256:
+  `d200726c2d38c32d9d0a94b6d54f225852e9dc47fcebaad440fe790dc6e1bdda`. Rows are
+  `340621` id `9a05cc8eb748c7811e259eb927f484f0`, standard name `濉溪镇`,
+  type `21500`, province `安徽省`, city `淮北市`, area name `濉溪县`, area
+  `340621100`, point `[116.7633648,33.9210541]`, notice URL `null`, and is a
+  same-district representative town record rather than a separately
+  notice-backed government-seat assertion; `653132` id
+  `663fbb0d8eff2fa6dab5ea692b44ea49`, standard name `新华镇`, type `21500`,
+  province `新疆维吾尔自治区`, city `喀什地区`, area name `叶城县`, area
+  `653126109`, point `[76.6590778,36.3982468]`, notice URL
+  `https://www.xinjiang.gov.cn/xinjiang/tzgg/202603/285e5d25b8ad4eae8df6b0f0efe847f6.shtml`
+  freezing the new Cenling County (岑岭县) government seat at 新华镇; the source
+  record retains area name `叶城县` because it predates the new county; and
+  `659013` id `9ed00d74a2a2eb420fd4bdfc3a6f3c33`, standard name `草湖镇`, type
+  `21500`, province `新疆维吾尔自治区`, city `草湖市`, area name `null`, area
+  `659013100`, point `[76.0150158405304,39.2918246984482]`, notice URL
+  `https://www.xinjiang.gov.cn/xinjiang/tzgg/202604/3691350b13064945947d8f78933ccb3e.shtml`
+  freezing the city government seat at 草湖镇;
+- final normalized point rows use property order
+  `{admin_code,centroid_lng,centroid_lat,source_record_id,resolution_rule}`,
+  hierarchy source order, `JSON.stringify` UTF-8 with no trailing newline,
+  frozen artifact
+  `mca-mainland-normalized-representative-points-3211-2026-08-09.json`, total
+  3211, SHA-256
+  `243a6c3106106293f6a1e3e4427dcfcb87408e1f2f6cc5e4fc50cae67376763b`, with
+  resolution counts `code_name_type=3207`, `ancestor_name_type=1`, and
+  `government_seat_exception=3`. The frozen machine label
+  `government_seat_exception` covers all three explicit representative-point
+  exception rows and does not assert that every row has a separate
+  government-seat notice.
 
 Implementation must materialize the repository-controlled catalog files from
-that frozen source and must add delivery-time checksums for generated
-`regions.json`, `popular-cities.json`, climate mappings, anchors, and
-alias/supersession files. Those generated Slice 6 data files are product
-artifacts and must be included in the final Delivery Report; they must not alter
-the frozen upstream source row counts, canonical codes, or municipality
-hierarchy.
+that frozen source. Freeze Gate checksums cover the upstream/frozen raw
+hierarchy, normalized hierarchy, initial aliases, canonical 3217 point-source
+artifact `mca-stname-listPub-representative-points-canonical-3217-2026-08-09.json`,
+3-row exception artifact `mca-representative-point-exceptions-3-2026-08-09.json`,
+and final 3211 point artifact
+`mca-mainland-normalized-representative-points-3211-2026-08-09.json`. Generated
+`regions.json`, `popular-cities.json`, climate mappings, anchors, and delivery
+packaging artifacts are implementation outputs; their exact hashes are Delivery
+Gate and final-report evidence, not pre-product Freeze inputs. They must not
+alter the frozen upstream source row counts, canonical codes, representative
+points, or municipality hierarchy.
 
 Direct-controlled municipalities must keep the official province-level
 municipality code as the district parent. The importer, APIs, H5 picker, and
@@ -340,9 +427,14 @@ Import approach:
 - CI and smoke run the same import/check path.
 
 The import is idempotent. A checksum mismatch, invalid hierarchy, fake
-municipality city code, unknown climate zone, disabled anchor, missing legacy
-city mapping, unresolved enabled district, or unreviewed code retirement entry is
-a gate failure.
+municipality city code, invalid representative-point source count/hash, invalid
+exception-manifest count/hash, invalid final point count/hash, invalid `area`
+decimal string length/form before `area.slice(0,6)`, non-`multipoint` `gdm`,
+missing `coordinates[0]`, non-finite longitude/latitude, longitude outside
+[-180,180], latitude outside [-90,90], missing representative point for any
+enabled row, unknown climate zone, disabled anchor, missing legacy city mapping,
+unresolved enabled district, or unreviewed code retirement entry is a gate
+failure.
 
 ## 6. Provider and Runtime Config Plan
 
@@ -456,8 +548,8 @@ Attribution rules:
 
 - HTTP QWeather responses use `name="和风天气/QWeather"` and
   `url="https://www.qweather.com"`.
-- QWeather `metadata.attributions[]`, any legacy warning `refer.sources[]`, and
-  weather-warning source names are passed through completely and without
+- QWeather `metadata.attributions[]` and weather-warning
+  `alerts[].senderName` source names are passed through completely and without
   rewriting in `attribution.sources`.
 - QWeather ratio fields used for public percentages are accepted only as finite
   `[0, 1]` numbers and converted with `Math.round(ratio * 100)`. Missing,
@@ -491,14 +583,15 @@ The QWeather provider-contract manifest is frozen in AC section 0.3 for:
   parser `qweather-daily-v1-agri-display-parser@1`;
 - display warning: `GET /weatheralert/v1/current/{latitude}/{longitude}`,
   fixture SHA-256
-  `3178e3d29692cfdbe7d6ea70ec018b9a7fc7f631247e2b5ba6b1fff7ce58d46e`,
+  `ad76821d0dcc423e84e530ac7c3dd3c865d685ba093db165cb386dbd68c15b2c`,
   parser `qweather-weatheralert-v1-display-parser@1`.
 
 Implementation must consume the exact official endpoint paths, official
 documentation URLs, documentation snapshot date, `X-QW-Api-Key` auth header,
 dedicated QWeather API Host contract, `{latitude}/{longitude}` coordinate order,
 consumed JSON paths, attribution paths, fixture checksums, and parser versions
-from AC section 0.3.
+from AC section 0.3. Parser tests must reject undocumented JSON paths outside
+the frozen consumed and attribution path lists.
 
 The Daily Forecast v1 entry pins
 `/weather/v1/daily/{latitude}/{longitude}`, dedicated host, `X-QW-Api-Key`,
@@ -621,8 +714,9 @@ Runtime rules:
 
 The calendar algorithm is frozen in AC section 0.2 as
 `lunar-javascript@1.7.7`, algorithm version
-`terrace-calendar-lunar-javascript-1.7.7-asia-shanghai-v1`, supported
-Gregorian range `1900-01-31..2100-12-31` inclusive, and outside-range behavior
+`terrace-calendar-lunar-javascript-1.7.7-asia-shanghai-v1`,
+application-supported Gregorian range `1900-01-31..2100-12-31` inclusive, and
+outside-range behavior
 `date`/`weekday` still populated plus `lunar.status=unavailable` and
 `solar_term=null`. Golden vectors in AC section 0.2 are mandatory implementation
 tests.
@@ -751,6 +845,13 @@ Server unit tests:
 - manifest complete source owner, URL, license or usage basis, snapshot date,
   version, import date, canonical code standard, row counts, checksums, and code
   retirement policy,
+- representative-point manifest gates for canonical 3217 source count/hash,
+  3-row exception count/hash, final 3211 point-row count/hash, hierarchy-order
+  join, documented 武宁县 anomaly, 3 explicit representative-point exceptions
+  including the 2 notice-backed new-unit government seats, `area` decimal string
+  length/form validation before `area.slice(0,6)`, `gdm.type=multipoint`,
+  `coordinates[0]`, finite longitude in [-180,180], finite latitude in [-90,90],
+  and all 3211 enabled rows resolved,
 - municipality hierarchy and no fake city-code invariant,
 - Haversine and nearest proxy,
 - selected-different-from-climate fixture with deterministic proxy result,
@@ -758,6 +859,8 @@ Server unit tests:
   local-date conversion, and golden vectors,
 - weather display parser, provider-contract manifest-driven display
   current/warning fixture paths, attribution, and cache,
+- QWeather provider-contract fixture hash tests for display current, frozen Daily
+  Forecast v1, and display warning, plus rejection of undocumented parser paths,
 - display current fixture/parser tests derive exact consumed paths from the
   Freeze-time provider-contract manifest; this plan does not define those paths,
 - frozen Daily Forecast v1 fixture consumed keys exactly
@@ -768,8 +871,8 @@ Server unit tests:
   QWeather v7 daily fixture contract,
 - display warning fixture/parser tests derive exact consumed paths from the
   Freeze-time provider-contract manifest; this plan does not define those paths,
-- QWeather warning fixture contains and preserves both `refer.sources[]` and
-  `alerts[].senderName` in attribution/display tests,
+- QWeather warning fixture uses the official v1 body pinned in AC section 0.3
+  and preserves `alerts[].senderName` in attribution/display tests,
 - QWeather public `humidity_percent` and `precipitation_probability_percent`
   conversion tests cover valid 0..1 ratios, missing values, non-finite values,
   and out-of-range values,
@@ -861,8 +964,8 @@ Production smoke:
 - selected-different-from-climate fixture proves provider/cache lookup uses
   selected district and performs zero climate proxy weather retries,
 - weather unavailable does not break seasonal usability,
-- calendar manifest version/checksum/provenance/range is printed, and golden
-  boundary fixtures pass,
+- calendar manifest version/checksum/provenance/application-supported Gregorian
+  range is printed, and golden boundary fixtures pass,
 - draft agricultural facts remain hidden,
 - health live/ready/content semantics unchanged.
 
@@ -891,7 +994,9 @@ The Slice 6 Delivery Report must include:
 - exact command list and exit codes,
 - region dataset manifest source owner, source URL, license or usage basis,
   snapshot date, source version, import date, canonical code standard, row
-  counts, checksums, and code retirement policy,
+  counts, checksums, representative-point source manifest, representative-point
+  exception manifest, final point-row checksum, all-3211 coverage proof, and code
+  retirement policy,
 - municipality proof that picker/API/migration store no fake city code,
 - seasonal home machine-field evidence for direct same/false, nearest
   different/true, and unsupported request/null/false:
@@ -899,8 +1004,8 @@ The Slice 6 Delivery Report must include:
 - selected-district-only weather evidence, including selected-different-from
   climate fixture and zero climate-proxy retry count,
 - calendar exact local library/table name, version, checksum, provenance,
-  supported date range, algorithm version, Asia/Shanghai boundary, solar-term
-  local-date conversion, and golden-vector evidence,
+  application-supported Gregorian range, algorithm version, Asia/Shanghai
+  boundary, solar-term local-date conversion, and golden-vector evidence,
 - provider-contract manifest entries for display current, frozen Daily Forecast
   v1, and display warning, including official supported endpoint path/version,
   official documentation URL, documentation snapshot date, auth header and host,
