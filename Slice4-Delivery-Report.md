@@ -137,6 +137,11 @@ candidate `853852d1d1c118f2f6765b280c4f0ef3d3299a29`.
 
 Hosted run `31292692456`, job `test-build-smoke`, completed SUCCESS:
 `https://github.com/xu2099xu-png/terrace-grow-slice1/actions/runs/31292692456`.
+
+Process-only documentation commit `780cbf6433510a23ed9c14f21a7a2e086b2e6370`
+tightened `AGENTS.md` delegation rules without changing product code. Hosted
+run `31292965604`, job `test-build-smoke`, completed SUCCESS on that PR head:
+`https://github.com/xu2099xu-png/terrace-grow-slice1/actions/runs/31292965604`.
 It succeeded all steps, including 50 unit tests, 108 integration/API/H5 tests,
 4 Playwright tests, Slice 2 migration upgrade, build, Compose validation, image
 builds, and production smoke.
