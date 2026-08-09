@@ -1,6 +1,6 @@
-# Slice 5 Implementation Plan v0.1 - Grounded AI Explanation
+# Slice 5 Implementation Plan v1.0 - Grounded AI Explanation
 
-> Status: DRAFT PLAN - aligned to `Slice5-Acceptance-Criteria-v0.1.md`.
+> Status: FROZEN / APPROVED FOR IMPLEMENTATION - aligned to `Slice5-Acceptance-Criteria-v1.0.md`.
 > Baseline product candidate: `853852d1d1c118f2f6765b280c4f0ef3d3299a29`.
 > Current main merge commit: `e65f05cd74abaacf44ac8ab4483ee558fb70acab`.
 

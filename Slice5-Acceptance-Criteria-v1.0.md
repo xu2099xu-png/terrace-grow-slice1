@@ -1,6 +1,6 @@
-# Slice 5 Acceptance Criteria v0.1 - Grounded AI Explanation
+# Slice 5 Acceptance Criteria v1.0 - Grounded AI Explanation
 
-> Status: DRAFT / NOT FROZEN
+> Status: FROZEN / APPROVED FOR IMPLEMENTATION
 > Baseline: Slice 4 frozen product candidate `853852d1d1c118f2f6765b280c4f0ef3d3299a29`
 > Current main merge commit: `e65f05cd74abaacf44ac8ab4483ee558fb70acab`
 
@@ -26,7 +26,7 @@ and core APIs must render and complete before any AI request is made.
 
 The original architecture grouped a broad Slice 5 package: provider integration,
 Tool Calling, numeric trace validation, explanation, question answering,
-multi-Agent content review, and AI cache. This v0.1 deliberately splits that
+multi-Agent content review, and AI cache. This v1.0 deliberately splits that
 package. Slice 5 contains only user-facing grounded explanation. Multi-Agent
 content review, ContentReviewLog workflows, expert-review back office, and
 open-ended Q&A are future independent slices.
