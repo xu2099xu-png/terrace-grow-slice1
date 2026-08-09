@@ -311,7 +311,7 @@ The administrative source manifest is frozen in AC section 0.1:
 - raw source SHA-256:
   `a880ff2c2fc76f7e15c42dcef9476bd353fd48a2ce3ea397140358211636700e`,
 - normalized mainland hierarchy SHA-256:
-  `1e72730c812e5306081dda3745086d6cfef58333332aad2faf0f8bd97b8960f0`,
+  `8674c11d4bc67a6a46eca3bc848cf209ecca1c490f887e03648478402328a551`,
 - initial alias/supersession SHA-256 for minified `[]`:
   `4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`.
 
