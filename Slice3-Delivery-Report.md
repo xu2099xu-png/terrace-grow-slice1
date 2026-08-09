@@ -1,7 +1,7 @@
 # Slice 3 Delivery Report — 「这个季节种什么」
 
 > 报告日期：2026-08-09
-> 当前状态：FINAL CLOSURE CANDIDATE / AWAITING INDEPENDENT AUDIT
+> 当前状态：PASS / FROZEN
 > 验收基线：`Slice3-Acceptance-Criteria-v1.0.md`（v1.1 FROZEN）
 > Slice 1 = CLOSED / ACCEPTED；Slice 2 = PASS / FROZEN（基线 `5affe3a2`）
 > 工作流：AC Freeze → 测试骨架 → 红测 → Coding → Slice Gate → 浏览器 E2E → Clean-room → Delivery Report
@@ -387,3 +387,25 @@ npm run build              EXIT=0
 
 只有该 SHA 独立终审通过后，才能签署 Slice 3 PASS/FROZEN，并将其作为 Slice 4
 Acceptance Criteria v1.1 的 baseline。
+
+---
+
+## 12. Independent freeze decision（2026-08-09）
+
+唯一代码候选 `394ea65782f00a1589429dd0adadfc107657f86d` 已完成独立源码级终审：
+
+```text
+Blocking: 0
+Decision: PASS
+Slice 3: PASS / FROZEN
+```
+
+终审确认 QWeather Daily Forecast v1/frost unknown、真实多候选同分排序、普通与跨年
+窗口边界矩阵，以及 approved Crop + draft SowingCalendar production 隔离均已闭合。
+
+Slice 3 冻结代码 commit：
+
+**`394ea65782f00a1589429dd0adadfc107657f86d`**
+
+后续报告或 Slice 4 文档提交不得替代该代码 baseline，也不得把 Slice 4 修改回写到该
+冻结 commit 的契约范围。
