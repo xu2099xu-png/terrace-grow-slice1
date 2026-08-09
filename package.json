@@ -1,7 +1,7 @@
 {
   "name": "terrace-grow",
   "private": true,
-  "description": "Terrace container planting product - Slice 1 (blueberry vertical slice)",
+  "description": "Terrace container planting planner - Slice 1-4 production foundation",
   "scripts": {
     "setup": "npm ci && npm --prefix server ci && npm --prefix h5 ci",
     "db:up": "docker compose up -d postgres && docker compose wait postgres",
@@ -14,11 +14,15 @@
     "test:integration": "npm --prefix server run test:integration",
     "test:slice2-gate": "npm --prefix server run test:slice2-gate",
     "test:slice3-gate": "npm --prefix server run test:slice3-gate",
+    "test:slice4-gate": "npm --prefix server run test:slice4-gate",
+    "test:migration-upgrade": "npm --prefix server run test:migration-upgrade",
     "test:e2e": "npm --prefix server run test:e2e",
     "test:h5": "npm --prefix h5 run test",
     "test:browser": "playwright test",
     "test:all": "npm --prefix server run test:all && npm run test:browser",
-    "build": "npm --prefix server run build && npm --prefix h5 run build"
+    "build": "npm --prefix server run build && npm --prefix h5 run build",
+    "compose:production:config": "docker compose -f docker-compose.production.yml config",
+    "test:production-smoke": "sh scripts/production-smoke.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

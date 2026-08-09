@@ -268,6 +268,20 @@ export class AgriDataService {
     });
   }
 
+  /** Production content readiness requires one coherent governed seasonal tuple. */
+  async hasUsableGovernedContent(): Promise<boolean> {
+    const crop = await this.prisma.crop.findFirst({
+      where: {
+        lifeType: 'seasonal',
+        ...this.review,
+        environmentRequirement: { some: this.review },
+        sowingCalendars: { some: this.review },
+      },
+      select: { id: true },
+    });
+    return crop !== null;
+  }
+
   /** Crop detail for the unified catalog (AC-15). */
   async getCropDetail(cropId: string, climateZoneCode?: string) {
     return this.prisma.crop.findUnique({

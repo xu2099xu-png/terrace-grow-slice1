@@ -7,6 +7,9 @@ import { PrismaService } from '../src/prisma.service';
 import { toShanghaiDateString } from '../src/engines/lifecycle-engine';
 import { HttpWeatherProvider } from '../src/weather/http-weather.provider';
 import { HttpLocationResolver } from '../src/location/http-location.resolver';
+import { AppConfigService } from '../src/config/runtime-config';
+import { configureApplication } from '../src/http/application';
+import { productionTestConfig } from './test-config';
 import { WEATHER_PROVIDER } from '../src/weather/weather-provider.interface';
 import {
   buildSeasonalRecommendations,
@@ -407,7 +410,7 @@ describe('Slice 3 Gate — API contracts (RED first)', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = module.createNestApplication();
-    app.setGlobalPrefix('api');
+    configureApplication(app);
     await app.init();
   });
 
@@ -467,38 +470,29 @@ describe('Slice 3 Gate — API contracts (RED first)', () => {
 
   // 10. draft SowingCalendar must not leak in production
   it('production: draft seasonal crops are not served', async () => {
-    const prevAppEnv = process.env.APP_ENV;
-    const prevAllowDraft = process.env.ALLOW_DRAFT_FIXTURES;
-    process.env.APP_ENV = 'production';
-    process.env.ALLOW_DRAFT_FIXTURES = 'true';
+    const prodModule = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(AppConfigService)
+      .useValue(productionTestConfig())
+      .compile();
+    const prodApp = prodModule.createNestApplication();
+    configureApplication(prodApp);
+    await prodApp.init();
     try {
-      const prodModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
-      const prodApp = prodModule.createNestApplication();
-      prodApp.setGlobalPrefix('api');
-      await prodApp.init();
-      try {
-        const res = await request(prodApp.getHttpServer())
-          .get('/api/seasons/now?city_code=beijing')
-          .expect(200);
-        // all seasonal crops are draft → production serves none of them
-        const draftIds = ['crop-tomato', 'crop-carrot', 'crop-peanut', 'crop-lettuce'];
-        for (const id of draftIds) {
-          expect(res.body.items.find((i: any) => i.crop_id === id)).toBeUndefined();
-        }
-      } finally {
-        await prodApp.close();
+      const res = await request(prodApp.getHttpServer())
+        .get('/api/seasons/now?city_code=beijing')
+        .expect(200);
+      // all seasonal crops are draft → production serves none of them
+      const draftIds = ['crop-tomato', 'crop-carrot', 'crop-peanut', 'crop-lettuce'];
+      for (const id of draftIds) {
+        expect(res.body.items.find((i: any) => i.crop_id === id)).toBeUndefined();
       }
     } finally {
-      process.env.APP_ENV = prevAppEnv;
-      process.env.ALLOW_DRAFT_FIXTURES = prevAllowDraft;
+      await prodApp.close();
     }
   });
 
   it('production: approved Crop cannot use a draft SowingCalendar', async () => {
     const prisma = app.get(PrismaService);
-    const prevAppEnv = process.env.APP_ENV;
-    const prevAllowDraft = process.env.ALLOW_DRAFT_FIXTURES;
-    const prevDate = process.env.SEASON_DATE;
     const draftCalendars = await prisma.sowingCalendar.count({
       where: { cropId: 'crop-carrot', climateZoneCode: 'north_china', reviewStatus: 'draft' },
     });
@@ -507,13 +501,15 @@ describe('Slice 3 Gate — API contracts (RED first)', () => {
       where: { id: 'crop-carrot' },
       data: { reviewStatus: 'approved' },
     });
-    process.env.APP_ENV = 'production';
-    process.env.ALLOW_DRAFT_FIXTURES = 'true';
-    process.env.SEASON_DATE = '2026-04-10';
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-01T04:00:00.000Z'));
     try {
-      const prodModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      const prodModule = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(AppConfigService)
+        .useValue(productionTestConfig())
+        .compile();
       const prodApp = prodModule.createNestApplication();
-      prodApp.setGlobalPrefix('api');
+      configureApplication(prodApp);
       await prodApp.init();
       try {
         const catalog = await request(prodApp.getHttpServer())
@@ -525,6 +521,29 @@ describe('Slice 3 Gate — API contracts (RED first)', () => {
           .get('/api/seasons/now?city_code=beijing')
           .expect(200);
         expect(seasonal.body.items.some((item: any) => item.crop_id === 'crop-carrot')).toBe(false);
+
+        const autumn = await prisma.sowingCalendar.findFirstOrThrow({
+          where: {
+            cropId: 'crop-carrot',
+            climateZoneCode: 'north_china',
+            windowKey: 'autumn',
+          },
+        });
+        await prisma.sowingCalendar.update({
+          where: { id: autumn.id },
+          data: { reviewStatus: 'approved' },
+        });
+        try {
+          const positiveControl = await request(prodApp.getHttpServer())
+            .get('/api/seasons/now?city_code=beijing')
+            .expect(200);
+          expect(positiveControl.body.items.some((item: any) => item.crop_id === 'crop-carrot')).toBe(true);
+        } finally {
+          await prisma.sowingCalendar.update({
+            where: { id: autumn.id },
+            data: { reviewStatus: 'draft' },
+          });
+        }
       } finally {
         await prodApp.close();
       }
@@ -533,12 +552,7 @@ describe('Slice 3 Gate — API contracts (RED first)', () => {
         where: { id: 'crop-carrot' },
         data: { reviewStatus: 'draft' },
       });
-      if (prevAppEnv === undefined) delete process.env.APP_ENV;
-      else process.env.APP_ENV = prevAppEnv;
-      if (prevAllowDraft === undefined) delete process.env.ALLOW_DRAFT_FIXTURES;
-      else process.env.ALLOW_DRAFT_FIXTURES = prevAllowDraft;
-      if (prevDate === undefined) delete process.env.SEASON_DATE;
-      else process.env.SEASON_DATE = prevDate;
+      vi.useRealTimers();
     }
   });
 });
@@ -553,7 +567,7 @@ describe('Slice 3 Gate — WeatherProvider failure boundary', () => {
       .useValue(provider)
       .compile();
     const app = module.createNestApplication();
-    app.setGlobalPrefix('api');
+    configureApplication(app);
     await app.init();
     return app;
   }
@@ -630,7 +644,7 @@ describe('Slice 3 Gate — DB invariants (SowingCalendar)', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = module.createNestApplication();
-    app.setGlobalPrefix('api');
+    configureApplication(app);
     await app.init();
     prisma = app.get(PrismaService);
   });
@@ -716,6 +730,13 @@ describe('Slice 3 Gate — DB invariants (SowingCalendar)', () => {
 });
 
 describe('Slice 3 Gate — real adapter contracts (closure)', () => {
+  const adapterConfig = () => ({
+    value: {
+      qWeatherKey: process.env.QWEATHER_KEY,
+      qWeatherApiHost: process.env.QWEATHER_API_HOST,
+      locationApiKey: process.env.LOCATION_API_KEY,
+    },
+  } as AppConfigService);
   const key = process.env.QWEATHER_KEY;
   const weatherHost = process.env.QWEATHER_API_HOST;
   const locKey = process.env.LOCATION_API_KEY;
@@ -755,7 +776,7 @@ describe('Slice 3 Gate — real adapter contracts (closure)', () => {
     vi.stubGlobal('fetch', fetchMock);
     process.env.QWEATHER_KEY = 'test-key';
     process.env.QWEATHER_API_HOST = 'test.qweatherapi.com';
-    const p = new HttpWeatherProvider();
+    const p = new HttpWeatherProvider(adapterConfig());
     const out = await p.fetchRecent('beijing', '2026-04-10');
     expect(out).toHaveLength(3);
     expect(out[0].tempMinC).toBe(-1);
@@ -795,7 +816,7 @@ describe('Slice 3 Gate — real adapter contracts (closure)', () => {
     vi.stubGlobal('fetch', fetchMock);
     process.env.QWEATHER_KEY = 'test-key';
     process.env.QWEATHER_API_HOST = 'test.qweatherapi.com';
-    const p = new HttpWeatherProvider();
+    const p = new HttpWeatherProvider(adapterConfig());
     const out = await p.fetchRecent('beijing', '2026-04-10');
     expect(out[0].tempMinC).toBeUndefined();
     expect(out[0].frostRisk).toBe('unknown');
@@ -830,7 +851,7 @@ describe('Slice 3 Gate — real adapter contracts (closure)', () => {
     }));
     process.env.QWEATHER_KEY = 'test-key';
     process.env.QWEATHER_API_HOST = 'test.qweatherapi.com';
-    const out = await new HttpWeatherProvider().fetchRecent('beijing', '2026-04-10');
+    const out = await new HttpWeatherProvider(adapterConfig()).fetchRecent('beijing', '2026-04-10');
     expect(out.map((d) => d.date)).toEqual(['2026-04-10', '2026-04-12']);
   });
 
@@ -845,7 +866,7 @@ describe('Slice 3 Gate — real adapter contracts (closure)', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     process.env.LOCATION_API_KEY = 'test-key';
-    const r = new HttpLocationResolver();
+    const r = new HttpLocationResolver(adapterConfig());
     const out = await r.resolveCity(39.9, 116.4);
     expect(out).toEqual({ city_code: 'beijing', city_name: '北京' });
   });
@@ -861,7 +882,7 @@ describe('Slice 3 Gate — real adapter contracts (closure)', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     process.env.LOCATION_API_KEY = 'test-key';
-    const r = new HttpLocationResolver();
+    const r = new HttpLocationResolver(adapterConfig());
     const out = await r.resolveCity(30.2, 120.2);
     expect(out).toEqual({ city_code: 'hangzhou', city_name: '杭州' });
   });

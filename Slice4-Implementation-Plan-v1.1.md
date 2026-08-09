@@ -279,3 +279,13 @@ h5/nginx.conf
 Existing business engines, agricultural governance semantics, Prisma schema,
 and Prisma migrations remain unchanged in Slice 4. A regression cannot be used
 as a scope exception; follow the architecture-conflict procedure above.
+
+## 8. Implementation Security Addendum
+
+The production dependency audit on 2026-08-09 found advisories in the latest
+NestJS 10 dependency tree, including high-severity transitive Express/Multer
+findings. The implementation therefore uses the compatible NestJS 11.1.x,
+Config 4.x, and JWT 11.x package set instead of the NestJS 10-compatible set
+anticipated in section 2. This changes framework dependencies only; it does not
+change the frozen HTTP or agricultural contracts. Compilation, all regression
+gates, and production-container smoke remain mandatory evidence for the upgrade.

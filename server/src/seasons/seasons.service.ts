@@ -12,12 +12,14 @@ import {
   SowingWindowRow,
   SeasonalEngineResult,
 } from '../engines/seasonal-engine';
+import { AppConfigService } from '../config/runtime-config';
 
 @Injectable()
 export class SeasonsService {
   constructor(
     private readonly agri: AgriDataService,
     @Inject(WEATHER_PROVIDER) private readonly weatherProvider: WeatherProvider,
+    private readonly config: AppConfigService,
   ) {}
 
   /**
@@ -27,8 +29,8 @@ export class SeasonsService {
   async now(cityCode: string, userId: string | null): Promise<any> {
     // SEASON_DATE is a test/E2E hook to fix "today" deterministically.
     // Without it the real Asia/Shanghai calendar day is used.
-    const date = process.env.SEASON_DATE
-      ? new Date(`${process.env.SEASON_DATE}T00:00:00.000Z`)
+    const date = this.config.value.seasonDate
+      ? new Date(`${this.config.value.seasonDate}T00:00:00.000Z`)
       : new Date();
     const today = toShanghaiDateString(date);
 
@@ -50,7 +52,12 @@ export class SeasonsService {
     const [crops, windows, weatherDays, terrace] = await Promise.all([
       this.agri.listSeasonalCrops(),
       this.agri.listSowingCalendars(zone.code),
-      fetchWeatherSafely(this.weatherProvider, cityCode, today),
+      fetchWeatherSafely(
+        this.weatherProvider,
+        cityCode,
+        today,
+        this.config.value.weatherProviderTimeoutMs,
+      ),
       userId ? this.agri.getTerraceProfile(userId) : null,
     ]);
 

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DailyWeather, WeatherProvider, addDays } from './weather-provider.interface';
 import { CITY_METADATA } from '../location/city-metadata';
 import { toShanghaiDateString } from '../engines/lifecycle-engine';
+import { AppConfigService } from '../config/runtime-config';
 
 /** Parse QWeather string-or-number temps ("12"/12) → number | null. */
 function parseTemp(v: unknown): number | null {
@@ -37,7 +38,7 @@ function parseForecastDate(value: unknown): string | null {
  * seasonal pipeline degrades to weather_data_status=unavailable (AC-20).
  *
  * Contract (AC-07/closure-2):
- *  - location uses QWeather-accepted coordinates (lng,lat), not a raw city name
+ *  - the v1 path uses QWeather's required (latitude,longitude) coordinate order
  *  - temperatureMin/temperatureMax facts are read from the supported v1 shape
  *  - QWeather provides no explicit frost fact, so frostRisk is always unknown
  */
@@ -45,9 +46,11 @@ function parseForecastDate(value: unknown): string | null {
 export class HttpWeatherProvider implements WeatherProvider {
   private readonly logger = new Logger(HttpWeatherProvider.name);
 
+  constructor(private readonly config: AppConfigService) {}
+
   async fetchRecent(cityCode: string, today: string): Promise<DailyWeather[]> {
-    const key = process.env.QWEATHER_KEY;
-    const apiHost = parseApiHost(process.env.QWEATHER_API_HOST);
+    const key = this.config.value.qWeatherKey;
+    const apiHost = parseApiHost(this.config.value.qWeatherApiHost);
     const coords = CITY_METADATA[cityCode];
     if (!key || !apiHost || !coords) {
       this.logger.warn(

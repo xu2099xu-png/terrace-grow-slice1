@@ -21,19 +21,12 @@ export interface WeatherProvider {
   fetchRecent(cityCode: string, today: string): Promise<DailyWeather[]>;
 }
 
-export function weatherProviderTimeoutMs(): number {
-  const configured = Number(process.env.WEATHER_PROVIDER_TIMEOUT_MS);
-  return Number.isFinite(configured) && configured > 0 && configured <= 30_000
-    ? configured
-    : 3_500;
-}
-
 /** Keep provider failures outside the seasonal API contract. */
 export async function fetchWeatherSafely(
   provider: WeatherProvider,
   cityCode: string,
   today: string,
-  timeoutMs = weatherProviderTimeoutMs(),
+  timeoutMs = 3500,
 ): Promise<DailyWeather[]> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
