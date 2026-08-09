@@ -2,12 +2,16 @@
 
 > Status: DRAFT / NOT APPROVED FOR IMPLEMENTATION.
 > Aligned draft: `Slice6-Acceptance-Criteria-v0.1.md`.
-> Baseline: Slice 5 final frozen product candidate `TBD`.
+> Baseline: Slice 5 final frozen product commit `TBD — waiting for Slice 5 PASS/FROZEN`.
 
 This plan is a drafting artifact only. Product-code implementation must not begin
-while the Slice 5 baseline remains `TBD` or while the Slice 6 AC is not frozen.
-If this plan conflicts with the AC, the AC wins and this plan must be revised
-before implementation starts.
+while the Slice 5 baseline remains
+`TBD — waiting for Slice 5 PASS/FROZEN` or while the Slice 6 AC is not frozen.
+Freeze may replace that value only with an externally accepted PASS/FROZEN exact
+40-character product-code SHA. A delivery report commit, branch, tag, candidate
+label, or non-40-character reference must be rejected. If this plan conflicts
+with the AC, the AC wins and this plan must be revised before implementation
+starts.
 
 ## 1. Scope Boundary
 
@@ -15,6 +19,10 @@ Slice 6 adds a region-first seasonal entry, district weather display, server-own
 today context, and three-tab H5 IA. It must not change crop, variety, container,
 soil, lifecycle, sowing-calendar, AI, auth, CORS, health, or existing seasonal
 engine semantics.
+
+The Epic is superseded only where the frozen Slice 6 AC explicitly narrows or
+mechanizes the contract. Do not use Slice 6 to perform broad refactors, rename
+unrelated APIs, or reorganize unrelated H5/server modules.
 
 Allowed new agricultural mapping facts are limited to:
 
@@ -107,6 +115,7 @@ Planned fields:
 - `name String`
 - `level String` with allowed values `province | city | district`
 - `parentAdminCode String?`
+- `isMunicipality Boolean`
 - `enabled Boolean`
 - `catalogOrder Int`
 - `dataVersion String`
@@ -124,6 +133,13 @@ Indexes:
 Validation gate, not ad hoc application logic, must reject duplicate rows,
 unknown parents, disabled parent chains, cycles, invalid centroids, and non-stable
 ordering.
+
+Direct-controlled municipalities use the official municipality/province-level
+row as the parent of district rows. The importer, Region model, popular API, H5
+picker, and tests derive municipality behavior from catalog/API machine fields;
+they must not create, persist, or emit fake city-level codes. Picker
+presentation may show a city step for usability, but that display step points to
+the municipality's canonical province-level `adminCode`.
 
 ### 4.2 Region-to-Climate Mapping
 
@@ -164,22 +180,48 @@ Resolution order:
 `unsupported` is not a normal state for enabled districts. The catalog check gate
 must fail if any enabled district cannot resolve direct or nearest_proxy.
 
-### 4.3 Weather Cache
+### 4.3 Region Directory Public Contract Notes
+
+`/api/location/regions` response rows must expose `is_municipality` as a public
+machine field. Ordinary city/prefecture rows and district rows return `false`;
+direct-controlled municipality province rows return `true`.
+
+For a direct-controlled municipality parent, `GET /api/location/regions`
+with `level=city&parent_admin_code=<municipality_admin_code>` returns `[]`.
+H5 requests `level=district&parent_admin_code=<municipality_admin_code>`
+directly. No plan step may hardcode a list of municipality names in H5 logic; the
+frontend follows the API's `is_municipality` and popular-row `kind` fields.
+
+`/api/location/popular-cities` display code rules:
+
+- `kind="city"`: `display_area_code` equals `city_admin_code`.
+- `kind="municipality"`: `display_area_code` equals `province_admin_code` and
+  `city_admin_code=null`.
+
+For a district under a direct-controlled municipality, `city_name` is display
+only and may equal `province_name`; it must not imply a city-level
+administrative code.
+
+### 4.4 Weather Cache
 
 Add `WeatherCache` for parsed public/internal weather facts only.
 
 Planned unique key:
 
-- `adminCode`
+- `selectedAreaCode`
 - `provider`
 - `providerEndpointVersion`
 - `bucket`
 - `parserVersion`
 
+Do not name this weather cache key `adminCode`, `climateAreaCode`, or any other
+ambiguous region field. Weather cache identity is the selected-area identity
+only.
+
 Planned fields:
 
 - `cacheKeyHash String @unique`
-- `adminCode String`
+- `selectedAreaCode String`
 - `provider String`
 - `providerEndpointVersion String`
 - `parserVersion String`
@@ -199,7 +241,7 @@ AC explicitly allows it. `attribution` is stored only after validation and must
 preserve the exact public attribution data used by H5, including QWeather
 `refer.sources` and weather-warning source names.
 
-### 4.4 Calendar Cache
+### 4.5 Calendar Cache
 
 Add `CalendarContextCache` or an equivalent table keyed by:
 
@@ -215,10 +257,11 @@ Before implementation, the frozen AC or manifest must name:
 
 - calendar algorithm/table version,
 - source/provenance,
+- date coverage range,
 - checksum if table-backed,
 - golden fixture dates.
 
-### 4.5 TerraceProfile Legacy Migration
+### 4.6 TerraceProfile Legacy Migration
 
 Do not remove or reinterpret `cityCode` in Slice 6.
 
@@ -229,8 +272,14 @@ Add:
 
 Migration/backfill rule:
 
-- For the 17 legacy city codes, set `regionAdminCode` to the city-level canonical
-  `admin_code`, not a guessed district.
+- For the 17 legacy city codes, set `regionAdminCode` to the matching
+  city/prefecture-level or municipality canonical `admin_code`, not a guessed
+  district.
+- For Beijing, Tianjin, Shanghai, and any future direct-controlled municipality
+  legacy values, set `regionAdminCode` to the municipality's official
+  province-level `admin_code`, because Slice 6 must not invent a city code.
+- For ordinary legacy values, set `regionAdminCode` to the matching official
+  city/prefecture-level `admin_code`.
 - Set `needsDistrictConfirmation=true`.
 - Preserve `cityCode` so existing Slice 1-5 flows keep working.
 - New confirmed district submissions set `regionAdminCode` to a district code and
@@ -249,21 +298,34 @@ Planned manifest fields:
 ```json
 {
   "dataset_name": "string",
-  "source": "official-or-owner-approved source",
-  "source_url": "string | null",
+  "source_owner": "string",
+  "source_url": "string",
+  "license_or_usage_basis": "string",
+  "snapshot_date": "YYYY-MM-DD",
   "source_version": "string",
   "import_date": "YYYY-MM-DD",
   "data_version": "string",
-  "region_row_count": 0,
+  "canonical_code_standard": "string",
+  "province_row_count": 0,
+  "city_prefecture_row_count": 0,
+  "district_county_row_count": 0,
+  "disabled_retired_row_count": 0,
   "popular_city_count": 0,
   "direct_mapping_count": 0,
   "climate_anchor_count": 0,
   "regions_sha256": "hex",
   "popular_cities_sha256": "hex",
   "direct_mappings_sha256": "hex",
-  "climate_anchors_sha256": "hex"
+  "climate_anchors_sha256": "hex",
+  "aliases_supersessions_sha256": "hex",
+  "code_retirement_policy": "string"
 }
 ```
+
+Every manifest value above is an empty-to-fill Freeze gate. Any remaining `TBD`
+for source owner, source URL, license or usage basis, snapshot date/version,
+import date, canonical code standard, row counts, checksums, or code retirement
+policy blocks Slice 6 Freeze.
 
 Import approach:
 
@@ -277,9 +339,10 @@ Import approach:
   and before starting the app.
 - CI and smoke run the same import/check path.
 
-The import is idempotent. A checksum mismatch, invalid hierarchy, unknown climate
-zone, disabled anchor, missing legacy city mapping, or unresolved enabled district
-is a gate failure.
+The import is idempotent. A checksum mismatch, invalid hierarchy, fake
+municipality city code, unknown climate zone, disabled anchor, missing legacy
+city mapping, unresolved enabled district, or unreviewed code retirement entry is
+a gate failure.
 
 ## 6. Provider and Runtime Config Plan
 
@@ -312,6 +375,9 @@ Production rules:
 - `http` requires key, host/base URL, timeout, and valid HTTPS provider URL.
 - `SEASON_DATE` remains forbidden.
 - AI config remains unchanged.
+- QWeather daily forecast v1 keeps the frozen Slice 3 dedicated host and
+  `X-QW-Api-Key` authentication contract. Do not silently route it through a
+  generic display-weather host or query-token fallback.
 
 ### 6.2 AMap Adapter
 
@@ -346,12 +412,35 @@ Planned separation:
 - Existing `/api/seasons/now?city_code=` remains compatible with the current
   agricultural weather provider path.
 
+Daily forecast contract:
+
+- Keep the frozen Slice 3 Daily Forecast v1 contract:
+  `/weather/v1/daily/{latitude}/{longitude}`.
+- Keep exact consumed paths `days[].forecastStartTime`,
+  `days[].temperatureMin.value`, and `days[].temperatureMax.value`.
+- Keep dedicated provider host and `X-QW-Api-Key` auth.
+- Keep frost unknown. Do not infer frost from current weather, warnings,
+  temperature, precipitation, or QWeather display facts in Slice 6.
+- Do not replace this with any QWeather v7 daily fixture contract.
+- No fallback to legacy city, climate proxy, representative district, alternate
+  endpoint, or static agricultural weather facts is allowed.
+
+Display current-weather and warning contracts are new Slice 6 display-only
+contracts and must be pinned separately from the frozen Daily Forecast v1
+contract.
+
 Weather lookup target is always the selected district. No city-level fallback,
 climate-proxy fallback, legacy `city_code` fallback, or representative-district
 fallback is allowed for weather. QWeather lookup may use the selected district
 centroid or a provider LocationID for that same selected district. If LocationID
 is introduced, it is an internal cache/catalog field and not part of the public
 region contract unless the AC is amended.
+
+Weather provider/cache keys, provider calls, fixture names, logs, and public
+weather fields use the selected district identity only. When
+`selected_area_code != climate_area_code`, weather still performs zero
+climate-proxy retry attempts; provider failure returns unavailable weather for
+the selected district rather than retrying the proxy district.
 
 Public weather attribution object:
 
@@ -369,12 +458,42 @@ Attribution rules:
   `url="https://www.qweather.com"`.
 - QWeather `refer.sources` and weather-warning source names are passed through
   completely and without rewriting in `attribution.sources`.
+- Provider-contract fixtures must include exact provider fields needed by each
+  adapter as pinned in the Freeze-time provider-contract manifest. This plan must
+  not define new display current/warning JSON paths ahead of that manifest. It
+  only preserves the already frozen Daily Forecast v1 daily min/max paths. Public
+  responses must not leak extra raw provider data.
 - `off` and `mock` use contract-defined null/static attribution and must not
   pretend to be a real external provider.
 - Cache hits must render the same attribution as provider responses.
 
 Failure modes return weather `status="unavailable"` and do not overwrite valid
 unexpired cache rows.
+
+### 6.4 Weather Provider-Contract Manifest
+
+Before Freeze, add a provider-contract manifest for each pinned weather fixture
+family:
+
+- display current,
+- frozen Daily Forecast v1,
+- display warning.
+
+Each manifest entry must include exact official supported endpoint path and
+version, official documentation URL, documentation snapshot date, auth header and
+host, exact consumed JSON paths, attribution JSON paths, fixture checksum, and
+parser version.
+
+The Daily Forecast v1 entry must pin
+`/weather/v1/daily/{latitude}/{longitude}`, dedicated host, `X-QW-Api-Key`,
+`days[].forecastStartTime`, `days[].temperatureMin.value`,
+`days[].temperatureMax.value`, and frost unknown. Any remaining `TBD` in these
+provider-contract manifest fields blocks Freeze.
+
+The attribution gate remains mandatory for display current/warning and cache-hit
+paths. Moving daily forecast back to the frozen Slice 3 contract must not weaken
+visible QWeather name/link, ordered `refer.sources`, warning source names, cache
+equality, or off/mock non-impersonation assertions.
 
 ## 7. Nearest Proxy Algorithm
 
@@ -389,7 +508,7 @@ Algorithm:
 2. Check approved direct mapping.
 3. If absent, compute Haversine distance from selected district centroid to every
    approved enabled `ClimateAnchor`.
-4. Sort by distance ascending, then `proxy_admin_code` ascending.
+4. Sort by distance ascending, then proxy anchor `climate_area_code` ascending.
 5. Return nearest proxy with `distance_km` rounded by a documented deterministic
    rule.
 
@@ -399,7 +518,7 @@ Unit tests must include:
 - direct mapping returns zero distance and null proxy fields,
 - disabled anchor excluded,
 - draft anchor excluded,
-- tie resolves by `proxy_admin_code` ascending,
+- tie resolves by proxy anchor `climate_area_code` ascending,
 - every enabled district resolves in the catalog fixture.
 
 ## 8. Seasonal Home API Plan
@@ -433,6 +552,30 @@ Flow:
    `climateZoneCode`, date, optional user id, and optional internal weather rows.
 9. Return exact aggregate shape from S6-AC-08.
 
+The public `agri_region_match` contract and internal typed request must carry
+these machine fields without reintroducing legacy `city_code`:
+
+- `selected_area_code`: the requested/selected district `admin_code` when it is
+  syntactically well-formed; for unsupported branches this preserves the request
+  code.
+- `climate_area_code`: the district or proxy anchor code used to derive the
+  agricultural climate context; `null` for unsupported.
+- `proxy_used`: boolean, `false` for direct and unsupported, `true` only for
+  nearest proxy.
+
+Required mapping examples:
+
+| Branch | `selected_area_code` | `climate_area_code` | `proxy_used` |
+| --- | --- | --- | --- |
+| direct | same as selected district | same as selected district | `false` |
+| nearest_proxy | selected district | different proxy anchor code | `true` |
+| unsupported | well-formed request code | `null` | `false` |
+
+Tests must include at least one enabled selected-district fixture where
+`selected_area_code != climate_area_code` and prove that seasonal recommendations
+use the climate proxy while weather lookup/cache/provider calls still use only
+`selected_area_code`.
+
 The refactor in `SeasonsService` must extract reusable internal assembly without
 copying seasonal-engine logic. The old public `now(cityCode, userId)` path remains
 exactly compatible and continues to satisfy Slice 3/5 tests.
@@ -461,9 +604,19 @@ Runtime rules:
 - No external network call is allowed.
 
 Implementation cannot start until the local library/table and
-`CALENDAR_ALGORITHM_VERSION` are pinned by manifest or frozen AC. Golden vectors
-must include a normal day, lunar month boundary, Chinese New Year, solar-term day,
-and non-solar-term day.
+`CALENDAR_ALGORITHM_VERSION` are pinned by manifest or frozen AC. The calendar
+manifest must record exact library/table name, version, checksum, provenance,
+and supported Gregorian date range. Golden vectors must include a normal day,
+lunar month boundary, Chinese New Year, solar-term instant crossing Asia/Shanghai
+local date, solar-term day, and non-solar-term day.
+
+Boundary rules:
+
+- Today context uses Asia/Shanghai local date at 00:00 boundary.
+- Solar-term instants are converted to Asia/Shanghai local dates before
+  populating `solar_term`.
+- Golden tests must include boundary dates around local midnight and solar-term
+  instants so UTC/day-shift bugs block Freeze.
 
 ## 10. H5 Plan
 
@@ -491,12 +644,20 @@ Planned routes:
 Add `RegionPicker.vue` with:
 
 - popular city list,
-- province -> city -> district selection,
+- ordinary province -> city/prefecture -> district selection,
+- direct-controlled municipality canonical municipality -> district selection,
 - retry on API failure,
 - accessible button/list semantics,
 - no full directory hardcoded in frontend,
 - emits exact selected region object:
   `admin_code`, `name`, `province_name`, `city_name`.
+
+Popular city rows must preserve `kind="city | municipality"`. For
+municipalities, the picker may render a city-like presentation step, but that
+presentation step must not generate, request, persist, or emit a fake city code.
+It loads districts using the canonical municipality `province_admin_code`, keeps
+`city_admin_code=null`, and stores/submits only the final district
+`admin_code`.
 
 Local persistence:
 
@@ -544,47 +705,83 @@ Rules:
 
 | AC | Implementation plan | Test evidence |
 | --- | --- | --- |
-| S6-AC-01 | Keep this plan draft while baseline is `TBD`; add scope conflict checklist to delivery report template. | Documentation review; no product implementation until AC freeze. |
-| S6-AC-02 | Add `Region` schema, manifest, structured import/check scripts, production image inclusion. | Region invariant tests, checksum gate, import idempotence. |
-| S6-AC-03 | Add `/location/regions` and `/location/popular-cities`; preserve `/supported-cities`. | HTTP exact-shape tests and invalid query validation tests. |
+| S6-AC-01 | Keep this plan draft while baseline is `TBD — waiting for Slice 5 PASS/FROZEN`; replace only with external PASS/FROZEN exact 40-char product SHA; add limited-Epic-supersession and no-broad-refactor stop checks. | Documentation review; SHA validator/evidence check; no product implementation until AC freeze. |
+| S6-AC-02 | Add `Region` schema, complete manifest, structured import/check scripts, municipality semantics, alias/retirement metadata, production image inclusion. | Region invariant tests, manifest complete-field gate, checksum gate, municipality no-fake-code fixture, import idempotence. |
+| S6-AC-03 | Add `/location/regions` with public `is_municipality`; add `/location/popular-cities` with exact city/municipality display-code rules; preserve `/supported-cities`. | HTTP exact-shape tests, municipality city-query-empty test, popular display-code tests, invalid query validation tests. |
 | S6-AC-04 | Update location resolver to return enabled district region or `null`; parse AMap adcode. | Provider fixture tests for success/null/failure/malformed/validation/privacy. |
 | S6-AC-05 | Implement SeasonalHome first-entry location flow with secure-context guard. | H5 component tests and Playwright insecure/denied/timeout/resolve-null flows. |
-| S6-AC-06 | Add shared RegionPicker with popular city then district selection. | RegionPicker unit tests and Playwright manual picker path. |
-| S6-AC-07 | Add `RegionClimateMapping`, `ClimateAnchor`, Haversine resolver; syntactically invalid admin codes are 400, well-formed unknown/disabled are 200 unsupported, enabled districts are direct/nearest_proxy only. | Pure function tests, catalog gate, direct/proxy/unsupported HTTP tests, invalid-admin-code validation tests. |
-| S6-AC-08 | Add `/seasonal/home` without `seasonal.city_code`; refactor SeasonsService internal assembly; no engine fork; legacy city_code stays only on `/seasons/now`. | HTTP exact-shape tests, no-`seasonal.city_code` assertion, old `/seasons/now` exact compatibility tests. |
-| S6-AC-09 | Add server today context service using pinned local calendar artifact. | Golden vector tests and no-network tests. |
-| S6-AC-10 | Add selected-district display weather provider/cache, exact attribution object, and daily adapter; no city/proxy weather fallback. | Available/partial/unavailable/cache tests, no defaulted fact assertions, QWeather attribution/source tests, off/mock non-impersonation tests. |
-| S6-AC-11 | Add `WeatherCache` and `CalendarContextCache` with validated JSON and validated attribution only. | Cache hit/expired/corrupt/failure-preserves-valid-row tests, cached attribution equality tests. |
+| S6-AC-06 | Add shared RegionPicker with ordinary province -> city/prefecture -> district and municipality -> district paths. | RegionPicker unit tests and Playwright coverage for both ordinary and municipality picker paths. |
+| S6-AC-07 | Add `RegionClimateMapping`, `ClimateAnchor`, Haversine resolver; syntactically invalid admin codes are 400, well-formed unknown/disabled are 200 unsupported, enabled districts are direct/nearest_proxy only. | Pure function tests, catalog gate, direct/proxy/unsupported HTTP tests, invalid-admin-code validation tests, selected-different-from-climate fixture. |
+| S6-AC-08 | Add `/seasonal/home` with typed `selected_area_code`/`climate_area_code`/`proxy_used`, without `seasonal.city_code`; refactor SeasonsService internal assembly; no engine fork; legacy city_code stays only on `/seasons/now`. | HTTP exact-shape tests, direct same/false, nearest different/true, unsupported request/null/false tests, no-`seasonal.city_code` assertion, old `/seasons/now` exact compatibility tests. |
+| S6-AC-09 | Add server today context service using pinned local calendar artifact. | Golden vector tests, Asia/Shanghai 00:00 boundary tests, solar-term local-date conversion tests, no-network tests. |
+| S6-AC-10 | Add selected-district display weather provider/cache, exact attribution object, and daily adapter; no city/proxy weather fallback. | Available/partial/unavailable/cache tests, zero climate-proxy weather retry test, no defaulted fact assertions, QWeather exact fixture/visible href/source/warning tests, off/mock non-impersonation tests. |
+| S6-AC-11 | Add `WeatherCache` and `CalendarContextCache` with validated JSON and validated attribution only. | Cache hit/expired/corrupt/failure-preserves-valid-row tests, cached attribution equality tests, selected-district-only cache key tests. |
 | S6-AC-12 | Update App/router to `时令种植`/`长期种植`/`我的` tabs and compat routes. | H5 unit and Playwright tab/deep-link tests. |
 | S6-AC-13 | SeasonalHome loads aggregate payload without TerraceProfile. | Fresh identity E2E reaches recommendations or supported fallback without profile. |
 | S6-AC-14 | TerraceWizard uses RegionPicker; active select auto-next; prefill no auto-next. | Wizard component tests and targeted Playwright. |
 | S6-AC-15 | Secure-context guard; coordinate non-persistence; secret-safe logs/cache. | Privacy unit tests, localStorage assertions, cache JSON assertions. |
 | S6-AC-16 | Implement visible failure states across provider, cache, region API, calendar. | Matrix tests covering all table rows. |
 | S6-AC-17 | Extend RuntimeConfig with provider off/http/mock and startup validation. | Config positive/negative tests and production smoke. |
-| S6-AC-18 | Extend migration upgrade script for Slice5 baseline and 17 legacy city codes. | Fresh/upgrade/idempotent migration gate. |
+| S6-AC-18 | Extend migration upgrade script for Slice5 baseline and 17 legacy city codes, distinguishing municipality province-level backfill from ordinary city/prefecture backfill. | Fresh/upgrade/idempotent migration gate and all-17 legacy mapping assertions. |
 | S6-AC-19 | Add full automated gate across server/H5/E2E/smoke. | CI matrix and AC-to-test evidence in delivery report. |
-| S6-AC-20 | Update production smoke and delivery report evidence requirements. | `npm run test:production-smoke` plus hosted CI evidence. |
+| S6-AC-20 | Update production smoke and delivery report evidence requirements, including manifest completeness, QWeather attribution accessibility, calendar provenance, and scope-stop evidence. | `npm run test:production-smoke` plus hosted CI evidence. |
 
 ## 12. Test Plan
 
 Server unit tests:
 
 - region manifest parser/checksum/hierarchy,
+- manifest complete source owner, URL, license or usage basis, snapshot date,
+  version, import date, canonical code standard, row counts, checksums, and code
+  retirement policy,
+- municipality hierarchy and no fake city-code invariant,
 - Haversine and nearest proxy,
-- calendar golden vectors,
-- weather display parser, attribution, and cache,
+- selected-different-from-climate fixture with deterministic proxy result,
+- calendar manifest pinning, Asia/Shanghai 00:00 boundary, solar-term instant to
+  local-date conversion, and golden vectors,
+- weather display parser, provider-contract manifest-driven display
+  current/warning fixture paths, attribution, and cache,
+- display current fixture/parser tests derive exact consumed paths from the
+  Freeze-time provider-contract manifest; this plan does not define those paths,
+- frozen Daily Forecast v1 fixture consumed keys exactly
+  `days[].forecastStartTime`, `days[].temperatureMin.value`, and
+  `days[].temperatureMax.value`, using `/weather/v1/daily/{latitude}/{longitude}`
+  with dedicated host and `X-QW-Api-Key`,
+- Daily Forecast v1 parser keeps frost unknown and rejects any fallback to a
+  QWeather v7 daily fixture contract,
+- display warning fixture/parser tests derive exact consumed paths from the
+  Freeze-time provider-contract manifest; this plan does not define those paths,
+- selected-district-only weather lookup/cache and zero climate-proxy retry on
+  weather failure,
 - config validation.
 
 Server HTTP/integration tests:
 
 - `/api/location/regions`,
+- `/api/location/regions` exact rows include `is_municipality`,
+- direct-controlled municipality `level=city` query returns `[]`,
+- direct-controlled municipality district query uses the municipality canonical
+  `parent_admin_code`,
 - `/api/location/popular-cities`,
+- `/api/location/popular-cities` `kind="city"` rows use
+  `display_area_code=city_admin_code`,
+- `/api/location/popular-cities` `kind="municipality"` rows use
+  `display_area_code=province_admin_code`,
+- `/api/location/popular-cities` municipality rows use `city_admin_code=null` and
+  district loading under `province_admin_code`,
+- location resolve district under a municipality returns display-only `city_name`,
 - `/api/location/supported-cities` legacy compatibility,
 - `/api/location/resolve`,
 - `/api/seasonal/home`,
 - `/api/seasonal/home` syntactically invalid `admin_code` -> 400,
 - `/api/seasonal/home` well-formed unknown/disabled -> 200 with `region=null`,
   unsupported match, weather unavailable, and empty items,
+- `/api/seasonal/home` direct returns `selected_area_code` equal to
+  `climate_area_code` and `proxy_used=false`,
+- `/api/seasonal/home` nearest proxy returns different `selected_area_code` and
+  `climate_area_code` with `proxy_used=true`,
+- `/api/seasonal/home` unsupported returns request `selected_area_code`,
+  `climate_area_code=null`, and `proxy_used=false`,
 - `/api/seasonal/home` response has no nested `seasonal.city_code`,
 - `/api/seasons/now?city_code=beijing` exact compatibility,
 - `/api/crops/:id?city_code=` compatibility.
@@ -595,13 +792,21 @@ Migration tests:
 - Slice 5 frozen database to Slice 6,
 - second `prisma migrate deploy`,
 - 17 legacy city code backfills,
+- Beijing, Tianjin, and Shanghai legacy values backfill to municipality
+  province-level `admin_code`; ordinary values backfill to city/prefecture-level
+  `admin_code`,
 - preservation of User, UserIdentity, TerraceProfile, UserMaterialInventory,
   PlantingRecord, PlantingEvent, AI explanation cache, and AI provider usage.
 
 H5 unit tests:
 
 - RegionPicker loading/error/retry/selection,
+- RegionPicker ordinary province -> city/prefecture -> district path,
+- RegionPicker municipality -> district path using canonical municipality code,
+- RegionPicker municipality presentation does not persist fake city code,
 - SeasonalHome secure-context/no-geolocation/picker/provider states,
+- SeasonalHome renders and exposes accessible QWeather attribution link with exact
+  href when provided by the server,
 - three-tab active route and deep link,
 - TerraceWizard active auto-next vs prefill no auto-next,
 - localStorage privacy.
@@ -611,6 +816,8 @@ Browser E2E:
 - first-use seasonal tab with geolocation resolve success,
 - first-use seasonal tab denied/timeout/manual district selection,
 - popular city shortcut requires district selection,
+- ordinary province -> city/prefecture -> district manual picker path,
+- municipality -> district manual picker path with no fake city-code request,
 - `时令种植`/`长期种植`/`我的` tabs preserve navigation and old routes,
 - old S3 seasonal route still supports `city_code=beijing`,
 - TerraceWizard target crop and `return_to=mine` still work.
@@ -624,7 +831,14 @@ Production smoke:
 - selected district weather never falls back to city/proxy weather identity,
 - QWeather attribution is visible when HTTP fixture mode is exercised; provider
   `off` and `mock` do not pretend to be QWeather,
+- QWeather fixture smoke verifies exact visible link text, exact
+  `https://www.qweather.com` href, complete ordered sources, warnings, and cache
+  equality,
+- selected-different-from-climate fixture proves provider/cache lookup uses
+  selected district and performs zero climate proxy weather retries,
 - weather unavailable does not break seasonal usability,
+- calendar manifest version/checksum/provenance/range is printed, and golden
+  boundary fixtures pass,
 - draft agricultural facts remain hidden,
 - health live/ready/content semantics unchanged.
 
@@ -645,16 +859,33 @@ npm run test:production-smoke
 
 The Slice 6 Delivery Report must include:
 
-- final Slice 5 baseline SHA replacing `TBD`,
+- final Slice 5 baseline SHA replacing
+  `TBD — waiting for Slice 5 PASS/FROZEN`, and proof it is an external
+  PASS/FROZEN exact 40-character product-code SHA,
 - final Slice 6 product SHA,
 - AC-to-test evidence matrix,
 - exact command list and exit codes,
-- region dataset manifest source/version/checksum/row counts,
-- calendar algorithm/table version and golden-vector evidence,
-- provider fixture versions,
-- weather attribution evidence, including QWeather name/link, complete
-  `refer.sources`, complete warning source names, off/mock attribution behavior,
-  and cache-hit attribution preservation,
+- region dataset manifest source owner, source URL, license or usage basis,
+  snapshot date, source version, import date, canonical code standard, row
+  counts, checksums, and code retirement policy,
+- municipality proof that picker/API/migration store no fake city code,
+- seasonal home machine-field evidence for direct same/false, nearest
+  different/true, and unsupported request/null/false:
+  `selected_area_code`, `climate_area_code`, `proxy_used`,
+- selected-district-only weather evidence, including selected-different-from
+  climate fixture and zero climate-proxy retry count,
+- calendar exact local library/table name, version, checksum, provenance,
+  supported date range, algorithm version, Asia/Shanghai boundary, solar-term
+  local-date conversion, and golden-vector evidence,
+- provider-contract manifest entries for display current, frozen Daily Forecast
+  v1, and display warning, including official supported endpoint path/version,
+  official documentation URL, documentation snapshot date, auth header and host,
+  exact consumed JSON paths, attribution JSON paths, fixture checksums, and
+  parser versions,
+- weather attribution evidence against the referenced QWeather attribution page,
+  including QWeather name/link, complete ordered `refer.sources`, complete
+  warning source names, exact accessible `https://www.qweather.com` href,
+  off/mock attribution behavior, and cache-hit attribution preservation,
 - migration fresh/upgrade/idempotent evidence,
 - production smoke output,
 - explicit no-scope-drift statement:
@@ -666,14 +897,24 @@ The Slice 6 Delivery Report must include:
 
 Stop and revise AC/plan before coding if any task requires:
 
-- replacing `TBD` with an unknown baseline,
+- replacing `TBD — waiting for Slice 5 PASS/FROZEN` with anything other than an
+  external PASS/FROZEN exact 40-character product-code SHA,
+- leaving any required region dataset manifest or calendar manifest field as
+  `TBD` at Freeze,
+- leaving any required weather provider-contract manifest field as `TBD` at
+  Freeze,
 - promoting draft agricultural fixtures,
 - adding or changing crop/variety/soil/lifecycle/sowing facts,
+- implementing perennial A/B, perennial catalog expansion, ecommerce evidence, or
+  soil/material recipe redesign,
 - changing seasonal-engine ranking or hard-filter semantics,
+- broad refactoring outside the files/modules required for the frozen AC,
 - requiring real provider keys in CI,
 - storing precise coordinates,
 - returning provider raw payloads,
 - depending on an external network call for lunar/solar-term context,
+- performing weather fallback/retry against city, climate proxy, legacy
+  `city_code`, or representative district when selected-district weather fails,
 - removing or weakening legacy `city_code` routes,
 - weakening Slice 5 AI, health, auth, CORS, or production draft-isolation
   contracts.

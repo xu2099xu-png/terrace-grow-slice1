@@ -2,13 +2,37 @@
 
 > Status: DRAFT / EPIC ALIGNMENT ONLY
 > Created: 2026-08-09
-> Scope: future terrace planting expansion after Slice 5 candidate work
+> Scope: future terrace planting expansion after Slice 5 PASS/FROZEN
 > This is not Slice 6 Acceptance Criteria and is not approved for implementation.
 
-This document freezes the confirmed product direction at epic level. It records
+This document records the confirmed product direction at epic level. It captures
 the intended information architecture, data direction, governance posture, and a
 possible slice route. Each future slice must still get its own acceptance
 criteria, delivery evidence, and scope boundary.
+
+## 0. Supersession Contract
+
+This epic supersedes earlier product direction only where it explicitly names a
+change to:
+
+- information architecture,
+- top-level navigation,
+- route ownership,
+- first-screen/home entry,
+- district/county location and weather behavior,
+- future long-term A/B responsibility split.
+
+All other Slice 1-5 PASS/FROZEN contracts remain valid, including agricultural
+recommendation semantics, evidence governance, draft isolation, auth, CORS, rate
+limit, health, CI, migrations, AI contracts, and delivery evidence rules.
+
+Any change not explicitly listed in this epic must not be used to justify a
+broad Slice 6 rewrite. If an implementation need conflicts with an earlier
+Slice 1-5 closure or with a future slice boundary, work must stop and return to
+the original slice closure or a new acceptance-criteria document.
+
+Slice 6 baseline must be frozen by Slice 6 AC after the exact Slice 5 PASS/FROZEN
+SHA is established. This epic does not replace or redefine that baseline.
 
 ## 1. Product Direction
 
@@ -193,7 +217,9 @@ First use should support:
 - browser/device location when the user grants permission,
 - clear fallback to popular cities,
 - district selection after the user chooses a popular city,
-- manual province -> city -> district selection,
+- manual province -> city/prefecture -> district selection for ordinary regions,
+- municipality -> district selection for direct-controlled municipalities, without
+  emitting a fake city code,
 - later change from 时令种植 and 我的.
 
 The product must not dead-end when permission is denied or unavailable.
@@ -478,7 +504,8 @@ This is a roadmap, not Slice 6 AC.
 - Add nationwide district/county selection using `admin_code`.
 - First-use location with permission and fallback to popular cities.
 - Popular city selection still requires district selection.
-- Manual selection must support province -> city -> district.
+- Manual selection must support ordinary province -> city/prefecture -> district
+  and direct-controlled municipality -> district paths without fake city codes.
 - District selection auto-advances in terrace/profile setup.
 - Today's Gregorian/lunar/solar-term context display.
 - District/county weather lookup must target the selected district by
@@ -491,6 +518,11 @@ This is a roadmap, not Slice 6 AC.
 - Unsupported status is only for well-formed unknown or disabled `admin_code`.
 - Syntactically invalid `admin_code` must be a 400 validation error.
 - Seasonal empty-state and proxy recovery behavior.
+
+Slice 6 must stay limited to region, weather, calendar, three-tab navigation,
+and Wizard changes. Long-term A/B flow, perennial catalog expansion, ecommerce
+evidence, and soil/fertilizer work remain Future Slice 7-11 scope and must not
+be pulled forward into Slice 6.
 
 ### Future Slice 7 - Long-Term A/B Data and Flow Skeleton
 

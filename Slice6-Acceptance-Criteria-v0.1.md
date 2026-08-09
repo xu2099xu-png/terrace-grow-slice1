@@ -1,10 +1,11 @@
 # Slice 6 Acceptance Criteria v0.1 - 全国区县位置、今日上下文与三 Tab IA
 
 > Status: DRAFT / NOT FROZEN
-> Baseline: Slice 5 final frozen product candidate `TBD`
+> Baseline: Slice 5 final frozen product commit `TBD — waiting for Slice 5 PASS/FROZEN`
 
-Slice 6 implementation MUST NOT begin until Slice 5 is explicitly PASS / FROZEN
-and the final Slice 5 product-code SHA replaces `TBD` in this document.
+Slice 6 implementation MUST NOT begin until Slice 5 is externally declared
+PASS / FROZEN and the final Slice 5 product-code SHA replaces
+`TBD — waiting for Slice 5 PASS/FROZEN` in this document.
 
 This document is an acceptance contract draft. It is not implementation
 permission.
@@ -15,7 +16,7 @@ Slice 6 makes the app usable from a location-first, zero-profile seasonal entry:
 
 - nationwide province/city/district directory with stable administrative codes,
 - first seasonal-tab visit asks for device location when browser security allows,
-- failure or refusal falls back to popular cities and three-level manual picker,
+- failure or refusal falls back to popular cities and manual region picker,
 - selected district drives precise weather display and a mapped agricultural
   climate context,
 - the first screen shows today's Gregorian date, weekday, lunar date, solar term
@@ -49,6 +50,9 @@ Slice 6 must not implement:
 - new perennial A/B recommendation models,
 - new perennial crop content, variety facts, container facts, soil formulas, or
   material recipes,
+- perennial catalog expansion,
+- perennial ecommerce or availability evidence implementation,
+- soil, substrate, pH, basal-fertilizer, or material-recipe redesign,
 - new seasonal crops, sowing windows, lifecycle templates, or agricultural fact
   seed data,
 - AI ranking, AI weather interpretation, AI location inference, or AI content
@@ -66,14 +70,32 @@ Slice 6 must not implement:
 
 ### S6-AC-01 Frozen Baseline and Scope Stop Rule
 
-Slice 6 starts only after Slice 5 is frozen. The implementation baseline must be
-recorded as:
+Slice 6 starts only after Slice 5 is externally declared PASS / FROZEN. The
+implementation baseline must be recorded as one exact 40-character product-code
+commit SHA:
 
 ```text
-Slice 5 final frozen product candidate: <sha>
+Slice 5 final frozen product commit: <sha>
 ```
 
-`TBD` is not acceptable in the final frozen Slice 6 AC.
+Current draft value is exactly:
+
+```text
+TBD — waiting for Slice 5 PASS/FROZEN
+```
+
+While that exact value remains, this AC cannot be frozen and implementation is
+forbidden.
+
+The baseline must not be:
+
+- a delivery report commit,
+- a documentation-only commit,
+- a branch name,
+- a tag name,
+- a candidate label,
+- a merge-base description,
+- any fuzzy or non-40-character reference.
 
 Implementation must stop and record a scope conflict if any required change
 would:
@@ -101,6 +123,7 @@ Every region row must include at minimum:
   "name": "string",
   "level": "province | city | district",
   "parent_admin_code": "string | null",
+  "is_municipality": false,
   "enabled": true,
   "data_version": "string",
   "source": "string",
@@ -121,6 +144,24 @@ Rules:
   import date, row count, and checksum must be filled into this document or a
   referenced frozen manifest. `TBD` is not acceptable for the dataset snapshot at
   implementation time.
+- The frozen manifest must include exact empty-to-fill fields for:
+  source owner, source URL, license or usage basis, snapshot date, source
+  version, import date, province row count, city/prefecture row count,
+  district/county row count, disabled/retired row count, each data-file checksum,
+  and canonical code standard.
+- `admin_code` is the canonical administrative code from the frozen standard.
+  Internal aliases may exist only to preserve old inputs or retired codes; public
+  selected/current region payloads use canonical codes.
+- Code changes, merges, splits, renames, and withdrawals must be represented by
+  explicit alias/supersession metadata. Removed or disabled codes may resolve as
+  well-formed disabled only when an alias cannot safely select a current enabled
+  district.
+- Direct-controlled municipalities use the official province/municipality row as
+  the parent of district/county rows. Slice 6 must not invent a fake city-level
+  canonical code for 北京、天津、上海、重庆.
+- The picker may display a city step for municipalities, but that display step
+  must point to the municipality's canonical province-level `admin_code`; it must
+  not store or emit a fake city code.
 - Unknown, duplicate, orphaned, or cyclic region rows are migration or seed gate
   failures.
 - District centroid coordinates are for provider lookup and nearest-proxy
@@ -143,22 +184,25 @@ GET /api/location/popular-cities
     "admin_code": "string",
     "name": "string",
     "level": "province | city | district",
-    "parent_admin_code": "string | null"
+    "parent_admin_code": "string | null",
+    "is_municipality": false
   }
 ]
 ```
 
-`/location/popular-cities` returns city-level rows with province display
-context:
+`/location/popular-cities` returns display rows that can represent both ordinary
+city/prefecture entries and direct-controlled municipalities:
 
 ```json
 [
   {
-    "admin_code": "string",
-    "name": "string",
-    "level": "city",
-    "parent_admin_code": "string",
-    "province_name": "string"
+    "display_area_code": "string",
+    "display_name": "string",
+    "kind": "city | municipality",
+    "province_admin_code": "string",
+    "province_name": "string",
+    "city_admin_code": "string | null",
+    "city_name": "string | null"
   }
 ]
 ```
@@ -169,8 +213,20 @@ Requirements:
 - Disabled rows are never returned.
 - Unknown fields are not present.
 - Invalid query parameters return the frozen validation error shape.
+- `is_municipality` is part of the public machine contract. Ordinary
+  city/prefecture rows return `false`; the four direct-controlled municipality
+  province rows return `true`; district rows return `false`.
+- For a direct-controlled municipality parent, requesting
+  `level=city&parent_admin_code=<municipality_admin_code>` returns `[]`. H5 must
+  request `level=district&parent_admin_code=<municipality_admin_code>` directly.
 - Selecting a popular city must open that city's district list. It must not
   silently select a central district or any representative district.
+- For `kind="city"`, `display_area_code` equals `city_admin_code`.
+- For `kind="municipality"`, `display_area_code` equals
+  `province_admin_code`, and `city_admin_code` is null.
+- For `kind="municipality"`, the district list is loaded under
+  `province_admin_code`; `city_admin_code` is null and no fake city code is
+  persisted.
 - Existing `/api/location/supported-cities` remains backward-compatible for
   older Slice 3/5 flows until explicitly removed in a future slice.
 
@@ -195,6 +251,9 @@ Rules:
 
 - Provider raw administrative strings must never become public identifiers.
 - The server maps provider output to an enabled internal `admin_code`.
+- For a district under a direct-controlled municipality, `city_name` is a
+  display-only municipality name and may equal `province_name`; it never
+  represents or implies a city-level administrative code.
 - Provider timeout, missing key, HTTP error, malformed response, unsupported
   location, or unknown district returns `null`, not 500.
 - The endpoint must not store precise coordinates or raw provider response.
@@ -213,8 +272,7 @@ selected district:
 4. If resolve returns a district, H5 stores the selected `admin_code` locally and
    loads the seasonal tab.
 5. If permission is denied, unavailable, times out, resolve returns `null`, or
-   any HTTP error occurs, H5 shows popular cities and the three-level manual
-   picker.
+   any HTTP error occurs, H5 shows popular cities and the manual picker.
 
 This flow must be visible and recoverable. It must not show a blank page, block
 navigation to 长期种植/我的, or require a TerraceProfile.
@@ -224,10 +282,17 @@ navigation to 长期种植/我的, or require a TerraceProfile.
 The manual picker must support:
 
 - popular city shortcut list that still requires district selection,
-- province -> city -> district three-level selection,
+- ordinary region flow: province -> city/prefecture -> district,
+- direct-controlled municipality flow: municipality -> district using the
+  municipality canonical `admin_code` as the parent,
 - retry on region API failure,
 - keyboard/touch accessible selection controls,
 - visible selected district context after selection.
+
+The UI may display a city-like step for direct-controlled municipalities, but it
+must not request, save, or emit a fake city code. Popular-city shortcuts for both
+ordinary cities and municipalities must still end with an active district
+selection.
 
 When the user chooses a district, the selected region stored locally is:
 
@@ -275,10 +340,34 @@ Enabled-district variant:
   },
   "agri_region_match": {
     "status": "direct",
+    "selected_area_code": "110101",
+    "climate_area_code": "110101",
     "climate_zone_code": "north_china",
-    "proxy_admin_code": null,
+    "proxy_used": false,
     "proxy_name": null,
     "distance_km": 0
+  }
+}
+```
+
+Enabled nearest-proxy variant:
+
+```json
+{
+  "region": {
+    "admin_code": "130102",
+    "name": "string",
+    "province_name": "string",
+    "city_name": "string"
+  },
+  "agri_region_match": {
+    "status": "nearest_proxy",
+    "selected_area_code": "130102",
+    "climate_area_code": "110105",
+    "climate_zone_code": "north_china",
+    "proxy_used": true,
+    "proxy_name": "朝阳区",
+    "distance_km": 12.3
   }
 }
 ```
@@ -290,8 +379,10 @@ Well-formed unknown/disabled branch:
   "region": null,
   "agri_region_match": {
     "status": "unsupported",
+    "selected_area_code": "999999",
+    "climate_area_code": null,
     "climate_zone_code": null,
-    "proxy_admin_code": null,
+    "proxy_used": false,
     "proxy_name": null,
     "distance_km": null
   }
@@ -309,15 +400,20 @@ Rules:
   - distance uses the Haversine formula over catalog centroids,
   - candidates are only enabled governed proxy anchors,
   - distance is returned in kilometers,
-  - ties sort by `proxy_admin_code` ascending,
+  - ties sort by proxy anchor `climate_area_code` ascending,
   - every enabled district must have either direct mapping or a nearest proxy.
 - Proxy matching must be disclosed in the UI as approximate agricultural-region
   matching.
 - `unsupported` returns no agricultural recommendations and is valid only for a
   well-formed unknown or disabled admin code.
-- For `direct`, `proxy_admin_code=null`, `proxy_name=null`, and
-  `distance_km=0`.
-- For `unsupported`, `climate_zone_code=null`, `proxy_admin_code=null`,
+- For `direct`, `selected_area_code` equals the requested enabled district,
+  `climate_area_code` equals the same district, `proxy_used=false`,
+  `proxy_name=null`, and `distance_km=0`.
+- For `nearest_proxy`, `selected_area_code` equals the requested enabled
+  district, `climate_area_code` equals the selected proxy anchor district,
+  `proxy_used=true`, and `distance_km` is the Haversine distance in kilometers.
+- For `unsupported`, `selected_area_code` equals the requested well-formed code,
+  `climate_area_code=null`, `climate_zone_code=null`, `proxy_used=false`,
   `proxy_name=null`, and `distance_km=null`.
 - Weather remains based on the selected district, never the proxy district.
 - Region-to-climate direct mappings, proxy anchors, and the nearest-proxy
@@ -358,8 +454,10 @@ Enabled-district variant:
   },
   "agri_region_match": {
     "status": "nearest_proxy",
+    "selected_area_code": "130102",
+    "climate_area_code": "110105",
     "climate_zone_code": "north_china",
-    "proxy_admin_code": "110105",
+    "proxy_used": true,
     "proxy_name": "朝阳区",
     "distance_km": 12.3
   },
@@ -405,8 +503,10 @@ Well-formed unknown/disabled branch overrides the enabled-district fields as:
   "region": null,
   "agri_region_match": {
     "status": "unsupported",
+    "selected_area_code": "999999",
+    "climate_area_code": null,
     "climate_zone_code": null,
-    "proxy_admin_code": null,
+    "proxy_used": false,
     "proxy_name": null,
     "distance_km": null
   },
@@ -454,6 +554,9 @@ Rules:
   shape.
 - Well-formed disabled or unknown `admin_code` returns HTTP 200 with
   `region=null`, `agri_region_match.status="unsupported"`,
+  `agri_region_match.selected_area_code` equal to the requested code,
+  `agri_region_match.climate_area_code=null`,
+  `agri_region_match.proxy_used=false`,
   `weather.status="unavailable"`, and `seasonal.items=[]`.
 - Supported direct/proxy mappings call the existing seasonal recommendation path
   with the resolved climate zone.
@@ -485,14 +588,23 @@ Add a server-owned today context for the selected district:
 
 Rules:
 
-- The date source is server-side and uses Asia/Shanghai.
+- The date source is server-side and uses Asia/Shanghai civil dates.
+- A civil day boundary is exactly `00:00:00` in Asia/Shanghai.
 - `SEASON_DATE` may affect this only in development/test, and remains forbidden
   in production.
-- Lunar and solar-term calculation must use a pinned local algorithm or table
-  with `algorithm_version`.
+- Lunar and solar-term calculation must use a pinned local algorithm or table.
+- Before this AC is frozen, the calendar manifest must fill exact values for:
+  local library or table name, exact version, checksum, provenance, supported
+  date range, and algorithm version. `TBD` is not acceptable for Freeze or
+  implementation.
+- Lunar date is computed for the Asia/Shanghai civil day.
+- Solar-term instants are converted to Asia/Shanghai and displayed only on the
+  corresponding local civil date.
 - Freeze requires authoritative golden vectors for representative dates,
-  including a normal day, a lunar month boundary, Chinese New Year, a solar-term
-  day, and a non-solar-term day.
+  including 23:59:59/00:00 day-boundary behavior, Chinese New Year, leap lunar
+  month behavior, a solar-term instant crossing a UTC/local-date boundary, a
+  normal day, a non-solar-term day, and a supported-range-outside unavailable
+  case.
 - Runtime calculation must not depend on external network calls.
 - Lunar date and solar term are display-only.
 - Lunar date or solar term must not affect seasonal recommendations, weather
@@ -535,10 +647,11 @@ Public shape:
 
 Rules:
 
-- The selected district's admin code or centroid is used for weather lookup.
-- Weather lookup target is always the selected district. No city-level fallback,
-  climate-proxy fallback, legacy `city_code` fallback, or representative-district
-  fallback is allowed for weather.
+- Weather lookup target, provider invocation, and cache key use only
+  `selected_area_code`.
+- Weather lookup target is always the selected district. `climate_area_code`,
+  city-level fallback, climate-proxy fallback, legacy `city_code` fallback, and
+  representative-district fallback are forbidden for weather.
 - `source` identifies the provider or static mode used for attribution.
 - `observed_at` is the provider observation time when available.
 - `updated_at` is the server time when the parsed weather payload was produced
@@ -556,6 +669,8 @@ Rules:
   wind, precipitation, rain probability, or frost.
 - Provider failure, timeout, no key, malformed response, or exhausted provider
   quota returns `status="unavailable"` and empty/neutral display fields, not 500.
+- Weather provider failure for `selected_area_code` must not trigger retry with
+  `climate_area_code`, city, legacy, or representative fallback.
 - H5 must clearly show whether weather is available, partial, cached, or
   unavailable.
 
@@ -566,7 +681,7 @@ context.
 
 Weather cache key must include:
 
-- `admin_code`,
+- `selected_area_code`,
 - provider,
 - provider endpoint/schema version,
 - date or observation bucket,
@@ -675,7 +790,7 @@ All failure states are visible, recoverable, and non-500 unless validation fails
 | Location provider missing/fails | Resolve returns null; H5 picker |
 | Region API fails | Visible retry; existing tab navigation remains usable |
 | Syntactically invalid admin_code | Frozen HTTP 400 validation shape |
-| Well-formed unknown or disabled admin_code | HTTP 200, `region=null`, `agri_region_match.status="unsupported"`, weather unavailable, no fake recommendation |
+| Well-formed unknown or disabled admin_code | HTTP 200, `region=null`, `agri_region_match.status="unsupported"`, `selected_area_code` equals requested code, `climate_area_code=null`, `proxy_used=false`, weather unavailable, no fake recommendation |
 | Enabled district missing direct/proxy result | Gate failure before release; not a normal runtime branch |
 | Weather provider missing/fails | Weather unavailable; seasonal base recommendation still follows frozen rules |
 | Calendar computation missing | Calendar field unavailable; no invented lunar/solar term |
@@ -740,10 +855,17 @@ Migration must preserve existing user/product data:
 Legacy `TerraceProfile.cityCode` migration is frozen:
 
 - do not guess a district from a legacy city code;
-- map each legacy city code to a city-level canonical `admin_code`;
+- map `beijing`, `tianjin`, and `shanghai` to their municipality canonical
+  `admin_code`;
+- map all other legacy city codes to their city/prefecture canonical
+  `admin_code`;
+- if a future legacy `chongqing` value appears before migration freeze, it maps
+  to the municipality canonical `admin_code`;
 - mark the profile `needs_district_confirmation=true`;
-- keep existing profile-dependent flows working with the city-level fallback
-  until the user confirms a district;
+- keep existing profile-dependent flows working through the legacy city-code
+  compatibility path until the user confirms a district;
+- this compatibility path is not a weather fallback and must not weaken the
+  selected-district-only weather contract;
 - prompt the user to choose a district on next relevant edit/entry.
 
 The migration gate must verify all 17 legacy values:
@@ -763,31 +885,71 @@ algorithm are the only new governed agricultural mapping data allowed in Slice 6
 Final Slice 6 gate must include automated coverage for:
 
 - region catalog invariants: uniqueness, hierarchy, enabled filtering, sorted
-  APIs, dataset checksum, no frontend hardcoded full directory;
+  APIs, dataset checksum, canonical code standard, code change/withdrawal
+  metadata, direct-controlled municipality two-level hierarchy, no fake city
+  canonical code, `/location/regions` `is_municipality` values, municipality
+  `level=city` child query returning `[]`, popular-city `display_area_code`
+  semantics, and no frontend hardcoded full directory or hardcoded four
+  municipality codes;
 - nearest-proxy invariants: Haversine distance, enabled governed anchors only,
-  distance in km, tie by `proxy_admin_code` ascending, and every enabled district
+  distance in km, tie by proxy anchor `climate_area_code` ascending, a
+  `selected_area_code != climate_area_code` fixture, and every enabled district
   resolves to direct or nearest_proxy;
-- location resolve success, null, provider failure, invalid lat/lng, and no raw
-  provider leak;
-- insecure-context, denied, timeout, resolve-null, popular-city, and
-  three-level-picker H5 flows;
+- location resolve success, municipality display-only `city_name`, null,
+  provider failure, invalid lat/lng, and no raw provider leak;
+- insecure-context, denied, timeout, resolve-null, popular-city, ordinary
+  province -> city/prefecture -> district picker, and direct-controlled
+  municipality -> district picker H5 flows;
 - `/api/seasonal/home?admin_code=` path with direct, nearest_proxy, unknown or
   disabled `region=null` unsupported, syntactically invalid 400, and
   weather-unavailable states;
+- direct, nearest_proxy, and unsupported responses expose exact
+  `selected_area_code`, `climate_area_code`, and `proxy_used` values;
 - enabled districts never returning `agri_region_match.status="unsupported"`;
 - old `/api/seasons/now?city_code=` exact compatibility;
 - proof that seasonal eligibility/ranking/weather hard-filter semantics did not
   change from Slice 3/5 regression expectations;
-- today calendar Asia/Shanghai date, weekday, pinned lunar/solar-term golden
-  vectors, and no external network dependency;
+- today calendar Asia/Shanghai civil date, `00:00:00` day boundary, weekday,
+  pinned lunar/solar-term golden vectors, 23:59:59/00:00 edge cases, Chinese New
+  Year, leap month, solar-term UTC/local-date boundary, supported-range-outside
+  unavailable state, and no external network dependency;
 - weather display available, partial, unavailable, cache hit, expired/corrupt
   miss, source attribution, updated time, current/min/max temperature,
   precipitation fields, and no defaulted facts;
+- weather provider invocation and weather cache key use `selected_area_code`;
+  tests must use a `selected_area_code != climate_area_code` fixture and assert
+  the provider receives `selected_area_code`, not `climate_area_code`;
+- weather provider failure must return unavailable after the selected-area call
+  and must make zero retry calls using proxy, city, legacy, or representative
+  fallback;
 - visible QWeather attribution showing `和风天气/QWeather`,
   `https://www.qweather.com`, complete provider `refer.sources`, complete
   weather-warning source names, and no fake external attribution for off/mock;
+- QWeather provider-contract manifest is a Freeze Gate. For each Slice 6
+  current, daily, and warning interface it must freeze the official supported
+  endpoint path and version, official documentation URL, documentation snapshot
+  date, auth header and host, exact consumed JSON paths, attribution JSON paths,
+  and fixture checksum. Any `TBD` in this manifest forbids Freeze and
+  implementation.
+- Existing Slice 3 agricultural Daily Forecast v1 must not regress or be
+  replaced by a v7 daily schema: it remains
+  `/weather/v1/daily/{latitude}/{longitude}`, parses
+  `days[].forecastStartTime`, `days[].temperatureMin.value`, and
+  `days[].temperatureMax.value`, uses the dedicated API host plus
+  `X-QW-Api-Key`, and keeps frost unknown.
+- New Slice 6 display current and warning contracts must be separately pinned
+  in the QWeather provider-contract manifest. They must not be inferred from or
+  substituted by the Slice 3 agricultural Daily Forecast v1 contract.
+- H5 QWeather attribution is asserted as a visible anchor with accessible name
+  exactly `和风天气/QWeather` and `href` exactly `https://www.qweather.com`;
+- QWeather `refer.sources` array order and content are preserved without
+  rewriting; weather-warning source names are displayed completely; cache hits
+  display the same attribution; `off` and `mock` modes do not display or return
+  QWeather attribution;
 - TerraceWizard active selection auto-next and prefill no auto-next;
 - legacy cityCode migration for all 17 legacy values with
+  Beijing/Tianjin/Shanghai mapped to municipality canonical codes, all other
+  listed values mapped to city/prefecture canonical codes, and
   `needs_district_confirmation=true`;
 - three-tab IA navigation, deep-link preservation, and mobile layout stability;
 - privacy tests proving no precise coordinates or provider secrets are stored in
@@ -815,10 +977,13 @@ Smoke must prove:
 - anonymous first-use seasonal flow can reach manual district selection;
 - selected district returns today context and a deterministic supported or
   approximate agricultural-region state;
+- the selected district fixture with `selected_area_code != climate_area_code`
+  still invokes weather only for `selected_area_code`;
 - provider config `off` mode returns unavailable location/weather UI without
   requiring real keys;
-- QWeather HTTP fixture path visibly displays required attribution and complete
-  source names;
+- QWeather HTTP fixture path visibly displays the required anchor, exact href,
+  complete ordered `refer.sources`, complete weather-warning source names, and
+  equivalent attribution on cache hit;
 - weather unavailable does not make the app unusable;
 - no draft agricultural facts are exposed.
 
@@ -829,11 +994,15 @@ The Slice 6 Delivery Report must include:
 - exact commands and exit codes,
 - migration results,
 - production config and smoke output,
-- any provider-contract fixture versions,
+- QWeather provider-contract manifest entries for every Slice 6 current, daily,
+  and warning interface, including fixture checksums,
 - QWeather attribution evidence against
   `https://dev.qweather.com/docs/terms/attribution/`,
-- region dataset snapshot source/version/checksum,
-- calendar algorithm version and golden-vector evidence,
+- region dataset manifest with exact source owner, source URL, license or usage
+  basis, snapshot date, source version, import date, row counts, checksums,
+  canonical code standard, and code change/withdrawal strategy,
+- calendar manifest with exact local library/table name, version, checksum,
+  provenance, supported range, algorithm version, and golden-vector evidence,
 - explicit statement that no new crop/variety/recipe/soil/lifecycle/sowing
   content or changed seasonal filtering semantics were introduced, and that
   Slice 6 added only the allowed governed region-to-climate mapping data and
