@@ -162,16 +162,47 @@ describe('Slice 3 Gate — seasonal engine invariants (RED first)', () => {
     expect(item!.weather_assessment).toBe('unknown');
   });
 
-  // 9. deterministic ranking
-  it('equal-score crops keep stable order across runs', () => {
-    const a = buildSeasonalRecommendations(
-      input(new Date('2026-05-01T04:00:00.000Z'), [tomato, peanut], [peanutSummer], null),
-    );
-    const b = buildSeasonalRecommendations(
-      input(new Date('2026-05-01T04:00:00.000Z'), [tomato, peanut], [peanutSummer], null),
-    );
-    expect(a.items.map((i) => i.crop_id)).toEqual(b.items.map((i) => i.crop_id));
-    expect(a.items.every((i) => typeof i.rank === 'number' && i.rank > 0)).toBe(true);
+  // 9. deterministic ranking with three genuinely eligible, equal-score crops
+  it('equal-score eligible crops use difficulty then crop_id across input orders', () => {
+    const easyA: SeasonalCropRow = {
+      ...carrot,
+      id: 'crop-a',
+      difficulty: 1,
+      containerFriendly: true,
+      familyUse: 2,
+      yieldLevel: 3,
+      harvestDaysMin: null,
+    };
+    const easyB: SeasonalCropRow = { ...easyA, id: 'crop-b' };
+    const harderButSameScore: SeasonalCropRow = {
+      ...easyA,
+      id: 'crop-0',
+      difficulty: 2,
+      familyUse: 4,
+    };
+    const windows = [easyA, easyB, harderButSameScore].map((crop) => ({
+      cropId: crop.id,
+      climateZoneCode: 'north_china',
+      startMethod: 'direct_seed',
+      windowKey: 'all-year',
+      windowStart: '01-01',
+      windowEnd: '12-31',
+    }));
+    const expected = ['crop-a', 'crop-b', 'crop-0'];
+    const orders = [
+      [harderButSameScore, easyB, easyA],
+      [easyA, harderButSameScore, easyB],
+      [easyB, easyA, harderButSameScore],
+    ];
+    for (const crops of orders) {
+      const result = buildSeasonalRecommendations(
+        input(new Date('2026-05-01T04:00:00.000Z'), crops, windows, null),
+      );
+      expect(result.items).toHaveLength(3);
+      expect(new Set(result.items.map((item) => item.score)).size).toBe(1);
+      expect(result.items.map((item) => item.crop_id)).toEqual(expected);
+      expect(result.items.map((item) => item.rank)).toEqual([1, 2, 3]);
+    }
   });
 
   // 13. Asia/Shanghai boundary: 00:10 Beijing is already the next day
@@ -184,10 +215,20 @@ describe('Slice 3 Gate — seasonal engine invariants (RED first)', () => {
     expect(res.items.some((i) => i.crop_id === 'crop-lettuce' && i.season_status === 'in_window')).toBe(true);
   });
 
-  // 14. year-crossing window
-  it('year-crossing window matches winter date, not late spring', () => {
+  it('ordinary window fixes first/last/before/after boundaries', () => {
+    expect(windowHits('03-01', '04-30', '02-28')).toBe(false);
+    expect(windowHits('03-01', '04-30', '03-01')).toBe(true);
+    expect(windowHits('03-01', '04-30', '04-30')).toBe(true);
+    expect(windowHits('03-01', '04-30', '05-01')).toBe(false);
+  });
+
+  // 14. year-crossing window, including both boundaries and adjacent days
+  it('year-crossing window fixes first/last/before/after boundaries', () => {
+    expect(windowHits('11-01', '02-15', '10-31')).toBe(false);
+    expect(windowHits('11-01', '02-15', '11-01')).toBe(true);
     expect(windowHits('11-01', '02-15', '01-10')).toBe(true);
-    expect(windowHits('11-01', '02-15', '03-01')).toBe(false);
+    expect(windowHits('11-01', '02-15', '02-15')).toBe(true);
+    expect(windowHits('11-01', '02-15', '02-16')).toBe(false);
     const res = buildSeasonalRecommendations(
       input(new Date('2026-01-10T04:00:00.000Z'), [tomato], [tomatoWinter]),
     );
@@ -452,6 +493,54 @@ describe('Slice 3 Gate — API contracts (RED first)', () => {
       process.env.ALLOW_DRAFT_FIXTURES = prevAllowDraft;
     }
   });
+
+  it('production: approved Crop cannot use a draft SowingCalendar', async () => {
+    const prisma = app.get(PrismaService);
+    const prevAppEnv = process.env.APP_ENV;
+    const prevAllowDraft = process.env.ALLOW_DRAFT_FIXTURES;
+    const prevDate = process.env.SEASON_DATE;
+    const draftCalendars = await prisma.sowingCalendar.count({
+      where: { cropId: 'crop-carrot', climateZoneCode: 'north_china', reviewStatus: 'draft' },
+    });
+    expect(draftCalendars).toBeGreaterThan(0);
+    await prisma.crop.update({
+      where: { id: 'crop-carrot' },
+      data: { reviewStatus: 'approved' },
+    });
+    process.env.APP_ENV = 'production';
+    process.env.ALLOW_DRAFT_FIXTURES = 'true';
+    process.env.SEASON_DATE = '2026-04-10';
+    try {
+      const prodModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      const prodApp = prodModule.createNestApplication();
+      prodApp.setGlobalPrefix('api');
+      await prodApp.init();
+      try {
+        const catalog = await request(prodApp.getHttpServer())
+          .get('/api/crops?life_type=seasonal')
+          .expect(200);
+        expect(catalog.body.some((crop: any) => crop.id === 'crop-carrot')).toBe(true);
+
+        const seasonal = await request(prodApp.getHttpServer())
+          .get('/api/seasons/now?city_code=beijing')
+          .expect(200);
+        expect(seasonal.body.items.some((item: any) => item.crop_id === 'crop-carrot')).toBe(false);
+      } finally {
+        await prodApp.close();
+      }
+    } finally {
+      await prisma.crop.update({
+        where: { id: 'crop-carrot' },
+        data: { reviewStatus: 'draft' },
+      });
+      if (prevAppEnv === undefined) delete process.env.APP_ENV;
+      else process.env.APP_ENV = prevAppEnv;
+      if (prevAllowDraft === undefined) delete process.env.ALLOW_DRAFT_FIXTURES;
+      else process.env.ALLOW_DRAFT_FIXTURES = prevAllowDraft;
+      if (prevDate === undefined) delete process.env.SEASON_DATE;
+      else process.env.SEASON_DATE = prevDate;
+    }
+  });
 });
 
 describe('Slice 3 Gate — WeatherProvider failure boundary', () => {
@@ -640,16 +729,26 @@ describe('Slice 3 Gate — real adapter contracts (closure)', () => {
     else process.env.LOCATION_API_KEY = locKey;
   });
 
-  // 4. QWeather official string temps ("-1"/"12") parse to numbers; frost not false
-  it('QWeather string temp response → correct numbers, frost never falsely false', async () => {
+  it('QWeather Daily Forecast v1 parses temperature facts but keeps frost unknown', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        code: '200',
-        daily: [
-          { fxDate: '2026-04-10', tempMin: '-1', tempMax: '12' },
-          { fxDate: '2026-04-11', tempMin: '0', tempMax: '10' },
-          { fxDate: '2026-04-12', tempMin: '5', tempMax: '15' },
+        days: [
+          {
+            forecastStartTime: '2026-04-09T16:00:00Z',
+            temperatureMin: { value: -1, unit: '°C' },
+            temperatureMax: { value: 12, unit: '°C' },
+          },
+          {
+            forecastStartTime: '2026-04-10T16:00:00Z',
+            temperatureMin: { value: 0, unit: '°C' },
+            temperatureMax: { value: 10, unit: '°C' },
+          },
+          {
+            forecastStartTime: '2026-04-11T16:00:00Z',
+            temperatureMin: { value: 5, unit: '°C' },
+            temperatureMax: { value: 15, unit: '°C' },
+          },
         ],
       }),
     });
@@ -661,25 +760,35 @@ describe('Slice 3 Gate — real adapter contracts (closure)', () => {
     expect(out).toHaveLength(3);
     expect(out[0].tempMinC).toBe(-1);
     expect(out[0].tempMaxC).toBe(12);
-    expect(out[0].frostRisk).toBe(true); // -1°C → frost, NOT false
+    expect(out.every((day) => day.frostRisk === 'unknown')).toBe(true);
     expect(out.map((d) => d.date)).toEqual(['2026-04-10', '2026-04-11', '2026-04-12']);
     const [url, options] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain('https://test.qweatherapi.com/v7/weather/3d');
-    expect(String(url)).toContain('location=116.41%2C39.92');
+    expect(String(url)).toContain('https://test.qweatherapi.com/weather/v1/daily/39.92/116.41');
+    expect(String(url)).toContain('days=3');
+    expect(String(url)).toContain('localTime=true');
     expect(String(url)).not.toContain('test-key');
     expect(options.headers).toEqual({ 'X-QW-Api-Key': 'test-key' });
   });
 
-  // 5. missing temp → frostRisk unknown, never false
-  it('QWeather missing tempMin → tempMinC undefined, frostRisk unknown', async () => {
+  it('QWeather v1 missing temperatureMin keeps temperature and frost unknown', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        code: '200',
-        daily: [
-          { fxDate: '2026-04-10', tempMax: '12' }, // tempMin missing
-          { fxDate: '2026-04-11', tempMin: '3', tempMax: '10' },
-          { fxDate: '2026-04-12', tempMin: '4', tempMax: '11' },
+        days: [
+          {
+            forecastStartTime: '2026-04-09T16:00:00Z',
+            temperatureMax: { value: 12, unit: '°C' },
+          },
+          {
+            forecastStartTime: '2026-04-10T16:00:00Z',
+            temperatureMin: { value: 3, unit: '°C' },
+            temperatureMax: { value: 10, unit: '°C' },
+          },
+          {
+            forecastStartTime: '2026-04-11T16:00:00Z',
+            temperatureMin: { value: 4, unit: '°C' },
+            temperatureMax: { value: 11, unit: '°C' },
+          },
         ],
       }),
     });
@@ -692,16 +801,30 @@ describe('Slice 3 Gate — real adapter contracts (closure)', () => {
     expect(out[0].frostRisk).toBe('unknown');
   });
 
-  it('QWeather uses fxDate and never fabricates missing calendar days', async () => {
+  it('QWeather v1 uses forecastStartTime and never fabricates missing calendar days', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        code: '200',
-        daily: [
-          { fxDate: '2026-04-09', tempMin: '1', tempMax: '9' },
-          { fxDate: '2026-04-10', tempMin: '2', tempMax: '10' },
-          { tempMin: '3', tempMax: '11' },
-          { fxDate: '2026-04-12', tempMin: '4', tempMax: '12' },
+        days: [
+          {
+            forecastStartTime: '2026-04-08T16:00:00Z',
+            temperatureMin: { value: 1, unit: '°C' },
+            temperatureMax: { value: 9, unit: '°C' },
+          },
+          {
+            forecastStartTime: '2026-04-09T16:00:00Z',
+            temperatureMin: { value: 2, unit: '°C' },
+            temperatureMax: { value: 10, unit: '°C' },
+          },
+          {
+            temperatureMin: { value: 3, unit: '°C' },
+            temperatureMax: { value: 11, unit: '°C' },
+          },
+          {
+            forecastStartTime: '2026-04-11T16:00:00Z',
+            temperatureMin: { value: 4, unit: '°C' },
+            temperatureMax: { value: 12, unit: '°C' },
+          },
         ],
       }),
     }));
