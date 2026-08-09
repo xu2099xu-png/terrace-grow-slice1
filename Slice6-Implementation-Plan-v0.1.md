@@ -475,15 +475,15 @@ The QWeather provider-contract manifest is frozen in AC section 0.3 for:
 
 - display current: `GET /weather/v1/current/{latitude}/{longitude}`,
   fixture SHA-256
-  `a08598d05202d955702043c04bdb1c1e1f323be03212a8ff30ba373c11752a72`,
+  `b33eb93a7e52ebdfdca0a55d10fe6d8b7b7b2b93c89a05c65b904c3d5ebab3bd`,
   parser `qweather-current-v1-display-parser@1`;
 - frozen Daily Forecast v1: `GET /weather/v1/daily/{latitude}/{longitude}`,
   fixture SHA-256
-  `18fc5c7b9b5a5b5f5f888aeb4ed9ff3a7e227edba732c8d82ddc0403d5237552`,
+  `6d513171fa80d53565317cb4e4ac52077b5b7b4c5447c38d764bfe1d96ca915d`,
   parser `qweather-daily-v1-agri-display-parser@1`;
 - display warning: `GET /weatheralert/v1/current/{latitude}/{longitude}`,
   fixture SHA-256
-  `873c534a42670c8a0154bbfa88aeae49c13152ab1b4f0843ac694779fc3c7e33`,
+  `ad76821d0dcc423e84e530ac7c3dd3c865d685ba093db165cb386dbd68c15b2c`,
   parser `qweather-weatheralert-v1-display-parser@1`.
 
 Implementation must consume the exact official endpoint paths, official
