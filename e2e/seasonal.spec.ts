@@ -3,8 +3,9 @@ import { test, expect } from '@playwright/test';
 /**
  * S3-E2E-01 (Golden Path A) — seasonal flow via the Home entry:
  * Home → 这个季节种什么 → (geolocation mock → beijing) → recommendation list
- * → find a direct-seed crop (胡萝卜) showing 建议直播 → open crop detail.
- * SEASON_DATE=2026-04-10 so carrot/lettuce/tomato windows deterministically hit.
+ * → find an `either` crop whose current window only permits direct seed
+ * → card and detail both keep the contextual 建议直播 conclusion.
+ * SEASON_DATE=2026-03-20 so lettuce direct_seed hits while nursery_plant does not.
  */
 test('S3-E2E-01 seasonal happy path: recommendation list → 建议直播 → detail', async ({ page, context }) => {
   await context.grantPermissions(['geolocation']);
@@ -17,16 +18,16 @@ test('S3-E2E-01 seasonal happy path: recommendation list → 建议直播 → de
   // geolocation resolves to beijing (mock resolver) → seasons page
   await page.waitForURL('**/#/seasons/now?city_code=beijing', { timeout: 15000 });
 
-  // Recommendation list exists with carrot (direct_seed window hits 04-10).
-  const carrotCard = page.locator('.crop-card', { hasText: '胡萝卜' });
-  await expect(carrotCard).toBeVisible({ timeout: 15000 });
-  await expect(carrotCard.locator('.start-method')).toHaveText('建议直播');
+  const lettuceCard = page.locator('.crop-card', { hasText: '生菜' });
+  await expect(lettuceCard).toBeVisible({ timeout: 15000 });
+  await expect(lettuceCard.locator('.start-method')).toHaveText('建议直播');
 
-  // Open unified crop detail.
-  await carrotCard.click();
-  await page.waitForURL('**/#/crops/crop-carrot**', { timeout: 15000 });
-  await expect(page.getByText('胡萝卜').first()).toBeVisible();
-  await expect(page.getByText('建议直播').first()).toBeVisible();
+  // Open unified crop detail without losing the recommendation context.
+  await lettuceCard.click();
+  await page.waitForURL('**/#/crops/crop-lettuce**start_methods=direct_seed**', { timeout: 15000 });
+  await expect(page.getByText('生菜').first()).toBeVisible();
+  const startMethodCell = page.locator('.van-cell', { hasText: '开始方式' }).first();
+  await expect(startMethodCell.locator('.van-cell__value')).toHaveText('建议直播');
 });
 
 /**
@@ -37,7 +38,7 @@ test('S3-E2E-01 seasonal happy path: recommendation list → 建议直播 → de
 test('S3-E2E-02 weather unavailable: recommendations remain + degradation hint', async ({ page }) => {
   await page.goto('/#/seasons/now?city_code=beijing');
   await expect(page.getByText('暂未结合近期天气')).toBeVisible({ timeout: 15000 });
-  // recommendations still exist (carrot in window under SEASON_DATE=2026-04-10)
+  // recommendations still exist (carrot in window under SEASON_DATE=2026-03-20)
   const carrotCard = page.locator('.crop-card', { hasText: '胡萝卜' });
   await expect(carrotCard).toBeVisible({ timeout: 15000 });
 });

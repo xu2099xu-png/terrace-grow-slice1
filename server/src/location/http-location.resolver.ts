@@ -22,16 +22,16 @@ export class HttpLocationResolver implements LocationResolver {
       this.logger.warn('LOCATION_API_KEY not configured — location unavailable');
       return null;
     }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 3000);
       const url =
         'https://restapi.amap.com/v3/geocode/regeo?' +
         `location=${lng},${lat}&key=${key}`;
       const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timer);
       if (!res.ok) return null;
       const json: any = await res.json();
+      if (json?.status !== '1') return null;
       const comp = json?.regeocode?.addressComponent;
       if (!comp) return null;
       // Direct municipalities have empty `city`; province/district carry the name.
@@ -41,6 +41,8 @@ export class HttpLocationResolver implements LocationResolver {
     } catch (e) {
       this.logger.warn(`location resolve failed: ${(e as Error).message}`);
       return null;
+    } finally {
+      clearTimeout(timer);
     }
   }
 }

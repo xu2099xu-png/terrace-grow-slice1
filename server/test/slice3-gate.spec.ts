@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -7,6 +7,7 @@ import { PrismaService } from '../src/prisma.service';
 import { toShanghaiDateString } from '../src/engines/lifecycle-engine';
 import { HttpWeatherProvider } from '../src/weather/http-weather.provider';
 import { HttpLocationResolver } from '../src/location/http-location.resolver';
+import { WEATHER_PROVIDER } from '../src/weather/weather-provider.interface';
 import {
   buildSeasonalRecommendations,
   aggregateWeather,
@@ -283,6 +284,51 @@ describe('Slice 3 Gate — seasonal engine invariants (RED first)', () => {
     expect(res.items.find((i) => i.crop_id === 'crop-tomato')!.weather_assessment).toBe('unknown');
   });
 
+  it('complete temperature still hard-filters when frost facts are partial', () => {
+    const completeTemperatureOnly = [
+      { date: '2026-01-10', tempMinC: 0, tempMaxC: 2, frostRisk: 'unknown' as const },
+      { date: '2026-01-11', tempMinC: 1, tempMaxC: 3 },
+      { date: '2026-01-12', tempMinC: 0, tempMaxC: 2, frostRisk: false },
+    ];
+    const res = buildSeasonalRecommendations(
+      input(new Date('2026-01-10T04:00:00.000Z'), [tomato], [tomatoWinter], completeTemperatureOnly),
+    );
+    expect(res.weather_data_status).toBe('partial');
+    expect(res.items.find((i) => i.crop_id === 'crop-tomato')).toBeUndefined();
+  });
+
+  it('complete frost facts still hard-filter when temperature facts are partial', () => {
+    const completeFrostOnly = [
+      { date: '2026-01-10', frostRisk: true },
+      { date: '2026-01-11', tempMinC: 20, tempMaxC: 24, frostRisk: false },
+      { date: '2026-01-12', tempMinC: 20, tempMaxC: 24, frostRisk: false },
+    ];
+    const res = buildSeasonalRecommendations(
+      input(new Date('2026-01-10T04:00:00.000Z'), [tomato], [tomatoWinter], completeFrostOnly),
+    );
+    expect(res.weather_data_status).toBe('partial');
+    expect(res.items.find((i) => i.crop_id === 'crop-tomato')).toBeUndefined();
+  });
+
+  it('any unknown frost day makes aggregate frostRisk unknown', () => {
+    const agg = aggregateWeather([
+      { date: '2026-01-10', tempMinC: 10, tempMaxC: 20, frostRisk: true },
+      { date: '2026-01-11', tempMinC: 10, tempMaxC: 20, frostRisk: 'unknown' },
+      { date: '2026-01-12', tempMinC: 10, tempMaxC: 20, frostRisk: false },
+    ]);
+    expect(agg.weather_data_status).toBe('partial');
+    expect(agg.frostRisk).toBe('unknown');
+  });
+
+  it('duplicate calendar days do not count as complete three-day weather', () => {
+    const agg = aggregateWeather([
+      { date: '2026-01-10', tempMinC: 10, tempMaxC: 20, frostRisk: false },
+      { date: '2026-01-10', tempMinC: 10, tempMaxC: 20, frostRisk: false },
+      { date: '2026-01-11', tempMinC: 10, tempMaxC: 20, frostRisk: false },
+    ]);
+    expect(agg.weather_data_status).toBe('partial');
+  });
+
   // 17b. three-day complete weather within range → suitable
   it('three-day complete weather within range → suitable', () => {
     const res = buildSeasonalRecommendations(
@@ -408,6 +454,86 @@ describe('Slice 3 Gate — API contracts (RED first)', () => {
   });
 });
 
+describe('Slice 3 Gate — WeatherProvider failure boundary', () => {
+  const originalDate = process.env.SEASON_DATE;
+  const originalTimeout = process.env.WEATHER_PROVIDER_TIMEOUT_MS;
+
+  async function createAppWithProvider(provider: { fetchRecent: () => Promise<any> }) {
+    const module = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(WEATHER_PROVIDER)
+      .useValue(provider)
+      .compile();
+    const app = module.createNestApplication();
+    app.setGlobalPrefix('api');
+    await app.init();
+    return app;
+  }
+
+  beforeAll(() => {
+    process.env.SEASON_DATE = '2026-04-10';
+  });
+
+  afterAll(() => {
+    if (originalDate === undefined) delete process.env.SEASON_DATE;
+    else process.env.SEASON_DATE = originalDate;
+    if (originalTimeout === undefined) delete process.env.WEATHER_PROVIDER_TIMEOUT_MS;
+    else process.env.WEATHER_PROVIDER_TIMEOUT_MS = originalTimeout;
+  });
+
+  it('provider throw degrades to unavailable without a 500', async () => {
+    const app = await createAppWithProvider({
+      fetchRecent: vi.fn().mockRejectedValue(new Error('provider failed')),
+    });
+    try {
+      const res = await request(app.getHttpServer())
+        .get('/api/seasons/now?city_code=beijing')
+        .expect(200);
+      expect(res.body.weather_data_status).toBe('unavailable');
+      expect(res.body.items.length).toBeGreaterThan(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('provider timeout degrades to unavailable without hanging the endpoint', async () => {
+    process.env.WEATHER_PROVIDER_TIMEOUT_MS = '20';
+    const app = await createAppWithProvider({
+      fetchRecent: vi.fn().mockImplementation(() => new Promise(() => undefined)),
+    });
+    try {
+      const started = Date.now();
+      const res = await request(app.getHttpServer())
+        .get('/api/seasons/now?city_code=beijing')
+        .expect(200);
+      expect(Date.now() - started).toBeLessThan(1000);
+      expect(res.body.weather_data_status).toBe('unavailable');
+      expect(res.body.items.length).toBeGreaterThan(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('provider partial fields remain partial and do not cause a 500', async () => {
+    const app = await createAppWithProvider({
+      fetchRecent: vi.fn().mockResolvedValue([
+        { date: '2026-04-10', tempMinC: 12, tempMaxC: 24, frostRisk: false },
+        { date: '2026-04-11', tempMaxC: 25, frostRisk: 'unknown' },
+        { date: '2026-04-12', tempMinC: 13, tempMaxC: 26, frostRisk: false },
+      ]),
+    });
+    try {
+      const res = await request(app.getHttpServer())
+        .get('/api/seasons/now?city_code=beijing')
+        .expect(200);
+      expect(res.body.weather_data_status).toBe('partial');
+      expect(res.body.items.length).toBeGreaterThan(0);
+      expect(res.body.items.every((item: any) => item.weather_assessment === 'unknown')).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 describe('Slice 3 Gate — DB invariants (SowingCalendar)', () => {
   let app: INestApplication;
   let prisma: any;
@@ -502,10 +628,14 @@ describe('Slice 3 Gate — DB invariants (SowingCalendar)', () => {
 
 describe('Slice 3 Gate — real adapter contracts (closure)', () => {
   const key = process.env.QWEATHER_KEY;
+  const weatherHost = process.env.QWEATHER_API_HOST;
   const locKey = process.env.LOCATION_API_KEY;
+  afterEach(() => vi.unstubAllGlobals());
   afterAll(() => {
     if (key === undefined) delete process.env.QWEATHER_KEY;
     else process.env.QWEATHER_KEY = key;
+    if (weatherHost === undefined) delete process.env.QWEATHER_API_HOST;
+    else process.env.QWEATHER_API_HOST = weatherHost;
     if (locKey === undefined) delete process.env.LOCATION_API_KEY;
     else process.env.LOCATION_API_KEY = locKey;
   });
@@ -517,21 +647,27 @@ describe('Slice 3 Gate — real adapter contracts (closure)', () => {
       json: async () => ({
         code: '200',
         daily: [
-          { tempMin: '-1', tempMax: '12' },
-          { tempMin: '0', tempMax: '10' },
-          { tempMin: '5', tempMax: '15' },
+          { fxDate: '2026-04-10', tempMin: '-1', tempMax: '12' },
+          { fxDate: '2026-04-11', tempMin: '0', tempMax: '10' },
+          { fxDate: '2026-04-12', tempMin: '5', tempMax: '15' },
         ],
       }),
     });
     vi.stubGlobal('fetch', fetchMock);
     process.env.QWEATHER_KEY = 'test-key';
+    process.env.QWEATHER_API_HOST = 'test.qweatherapi.com';
     const p = new HttpWeatherProvider();
     const out = await p.fetchRecent('beijing', '2026-04-10');
-    vi.unstubAllGlobals();
     expect(out).toHaveLength(3);
     expect(out[0].tempMinC).toBe(-1);
     expect(out[0].tempMaxC).toBe(12);
     expect(out[0].frostRisk).toBe(true); // -1°C → frost, NOT false
+    expect(out.map((d) => d.date)).toEqual(['2026-04-10', '2026-04-11', '2026-04-12']);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('https://test.qweatherapi.com/v7/weather/3d');
+    expect(String(url)).toContain('location=116.41%2C39.92');
+    expect(String(url)).not.toContain('test-key');
+    expect(options.headers).toEqual({ 'X-QW-Api-Key': 'test-key' });
   });
 
   // 5. missing temp → frostRisk unknown, never false
@@ -541,19 +677,38 @@ describe('Slice 3 Gate — real adapter contracts (closure)', () => {
       json: async () => ({
         code: '200',
         daily: [
-          { tempMax: '12' }, // tempMin missing
-          { tempMin: '3', tempMax: '10' },
-          { tempMin: '4', tempMax: '11' },
+          { fxDate: '2026-04-10', tempMax: '12' }, // tempMin missing
+          { fxDate: '2026-04-11', tempMin: '3', tempMax: '10' },
+          { fxDate: '2026-04-12', tempMin: '4', tempMax: '11' },
         ],
       }),
     });
     vi.stubGlobal('fetch', fetchMock);
     process.env.QWEATHER_KEY = 'test-key';
+    process.env.QWEATHER_API_HOST = 'test.qweatherapi.com';
     const p = new HttpWeatherProvider();
     const out = await p.fetchRecent('beijing', '2026-04-10');
-    vi.unstubAllGlobals();
     expect(out[0].tempMinC).toBeUndefined();
     expect(out[0].frostRisk).toBe('unknown');
+  });
+
+  it('QWeather uses fxDate and never fabricates missing calendar days', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        code: '200',
+        daily: [
+          { fxDate: '2026-04-09', tempMin: '1', tempMax: '9' },
+          { fxDate: '2026-04-10', tempMin: '2', tempMax: '10' },
+          { tempMin: '3', tempMax: '11' },
+          { fxDate: '2026-04-12', tempMin: '4', tempMax: '12' },
+        ],
+      }),
+    }));
+    process.env.QWEATHER_KEY = 'test-key';
+    process.env.QWEATHER_API_HOST = 'test.qweatherapi.com';
+    const out = await new HttpWeatherProvider().fetchRecent('beijing', '2026-04-10');
+    expect(out.map((d) => d.date)).toEqual(['2026-04-10', '2026-04-12']);
   });
 
   // 6. AMap Beijing administrative shape → canonical city_code=beijing
@@ -562,14 +717,13 @@ describe('Slice 3 Gate — real adapter contracts (closure)', () => {
       ok: true,
       json: async () => ({
         status: '1',
-        regeocode: { addressComponent: { province: '北京市', city: '', district: '海淀区' } },
+        regeocode: { addressComponent: { province: '北京市', city: [], district: '海淀区' } },
       }),
     });
     vi.stubGlobal('fetch', fetchMock);
     process.env.LOCATION_API_KEY = 'test-key';
     const r = new HttpLocationResolver();
     const out = await r.resolveCity(39.9, 116.4);
-    vi.unstubAllGlobals();
     expect(out).toEqual({ city_code: 'beijing', city_name: '北京' });
   });
 
@@ -586,7 +740,6 @@ describe('Slice 3 Gate — real adapter contracts (closure)', () => {
     process.env.LOCATION_API_KEY = 'test-key';
     const r = new HttpLocationResolver();
     const out = await r.resolveCity(30.2, 120.2);
-    vi.unstubAllGlobals();
     expect(out).toEqual({ city_code: 'hangzhou', city_name: '杭州' });
   });
 });

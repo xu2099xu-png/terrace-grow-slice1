@@ -1,6 +1,10 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { AgriDataService } from '../agri-data.service';
-import { WEATHER_PROVIDER, WeatherProvider } from '../weather/weather-provider.interface';
+import {
+  WEATHER_PROVIDER,
+  WeatherProvider,
+  fetchWeatherSafely,
+} from '../weather/weather-provider.interface';
 import { toShanghaiDateString } from '../engines/lifecycle-engine';
 import {
   buildSeasonalRecommendations,
@@ -46,7 +50,7 @@ export class SeasonsService {
     const [crops, windows, weatherDays, terrace] = await Promise.all([
       this.agri.listSeasonalCrops(),
       this.agri.listSowingCalendars(zone.code),
-      this.weatherProvider.fetchRecent(cityCode, today),
+      fetchWeatherSafely(this.weatherProvider, cityCode, today),
       userId ? this.agri.getTerraceProfile(userId) : null,
     ]);
 

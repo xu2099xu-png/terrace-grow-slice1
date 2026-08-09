@@ -12,6 +12,12 @@ function parseTemp(v: unknown): number | null {
   return null;
 }
 
+function parseApiHost(value: string | undefined): string | null {
+  const host = value?.trim();
+  if (!host || !/^[a-z0-9.-]+$/i.test(host)) return null;
+  return host;
+}
+
 /**
  * Real HTTP adapter (QWeather Daily Forecast 3-day). Timeout/error → [] so the
  * seasonal pipeline degrades to weather_data_status=unavailable (AC-20).
@@ -27,36 +33,52 @@ export class HttpWeatherProvider implements WeatherProvider {
 
   async fetchRecent(cityCode: string, today: string): Promise<DailyWeather[]> {
     const key = process.env.QWEATHER_KEY;
+    const apiHost = parseApiHost(process.env.QWEATHER_API_HOST);
     const coords = CITY_METADATA[cityCode];
-    if (!key || !coords) {
-      this.logger.warn(`QWeather unavailable (key=${!!key}, city=${cityCode}) — weather unavailable`);
+    if (!key || !apiHost || !coords) {
+      this.logger.warn(
+        `QWeather unavailable (key=${!!key}, host=${!!apiHost}, city=${cityCode}) — weather unavailable`,
+      );
       return [];
     }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 3000);
-      const url =
-        'https://devapi.qweather.com/v7/weather/3d?' +
-        `location=${coords.lng},${coords.lat}&key=${key}`;
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timer);
+      const url = new URL(`https://${apiHost}/v7/weather/3d`);
+      url.searchParams.set('location', `${coords.lng},${coords.lat}`);
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'X-QW-Api-Key': key },
+      });
       if (!res.ok) return [];
       const json: any = await res.json();
       if (json.code !== '200' || !Array.isArray(json.daily)) return [];
-      const out: DailyWeather[] = [];
-      for (let i = 0; i < json.daily.length && i < 3; i++) {
-        const d = json.daily[i];
+      const expectedDates = [today, addDays(today, 1), addDays(today, 2)];
+      const byDate = new Map<string, DailyWeather>();
+      for (const d of json.daily) {
+        const date = typeof d?.fxDate === 'string' ? d.fxDate : null;
+        if (!date || !expectedDates.includes(date) || byDate.has(date)) continue;
         const tempMinC = parseTemp(d?.tempMin);
         const tempMaxC = parseTemp(d?.tempMax);
         // frost = reliably known only when tempMin parsed; never fake false.
         const frostRisk: boolean | 'unknown' =
           tempMinC === null ? 'unknown' : tempMinC <= 0 ? true : false;
-        out.push({ date: addDays(today, i), tempMinC: tempMinC ?? undefined, tempMaxC: tempMaxC ?? undefined, frostRisk });
+        byDate.set(date, {
+          date,
+          tempMinC: tempMinC ?? undefined,
+          tempMaxC: tempMaxC ?? undefined,
+          frostRisk,
+        });
       }
-      return out;
+      return expectedDates.flatMap((date) => {
+        const row = byDate.get(date);
+        return row ? [row] : [];
+      });
     } catch (e) {
       this.logger.warn(`weather fetch failed: ${(e as Error).message}`);
       return [];
+    } finally {
+      clearTimeout(timer);
     }
   }
 }

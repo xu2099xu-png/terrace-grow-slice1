@@ -26,7 +26,7 @@
           v-for="item in result.items"
           :key="item.crop_id"
           class="crop-card"
-          @click="goDetail(item.crop_id)"
+          @click="goDetail(item)"
         >
           <div class="card-head">
             <span class="name">{{ item.crop_name }}</span>
@@ -79,10 +79,14 @@ const result = ref<SeasonalResult | null>(null);
 
 // closure-6: keep the city context when opening the crop detail so the detail
 // page only shows the current climate zone's sowing windows.
-function goDetail(cropId: string) {
+function goDetail(item: SeasonalItem) {
+  const query: Record<string, string> = {
+    start_methods: item.available_start_methods.join(','),
+  };
+  if (route.query.city_code) query.city_code = String(route.query.city_code);
   router.push({
-    path: `/crops/${cropId}`,
-    query: route.query.city_code ? { city_code: String(route.query.city_code) } : {},
+    path: `/crops/${item.crop_id}`,
+    query,
   });
 }
 

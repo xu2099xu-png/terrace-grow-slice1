@@ -92,6 +92,14 @@ export interface SeasonalEngineInput {
   terrace?: TerraceEnhancement | null;
 }
 
+export interface AggregatedWeather {
+  weather_data_status: WeatherDataStatus;
+  threeDayMeanC: number | null;
+  frostRisk: boolean | 'unknown';
+  temperatureComplete: boolean;
+  frostComplete: boolean;
+}
+
 /** Day-of-year helpers for 'MM-DD' window matching (Asia/Shanghai based). */
 function mmdd(date: Date): string {
   const { y, m, day } = toShanghaiDate(date);
@@ -110,42 +118,52 @@ function windowHits(windowStart: string, windowEnd: string, today: string): bool
 }
 
 /** Aggregate the recent-3-day weather into data status + temperature/frost facts. */
-export function aggregateWeather(days: DailyWeatherRow[]): {
-  weather_data_status: WeatherDataStatus;
-  threeDayMeanC: number | null;
-  frostRisk: boolean | 'unknown';
-} {
+export function aggregateWeather(days: DailyWeatherRow[]): AggregatedWeather {
   if (!days || days.length === 0) {
-    return { weather_data_status: 'unavailable', threeDayMeanC: null, frostRisk: 'unknown' };
+    return {
+      weather_data_status: 'unavailable',
+      threeDayMeanC: null,
+      frostRisk: 'unknown',
+      temperatureComplete: false,
+      frostComplete: false,
+    };
   }
+  // AC-28 is about three distinct local calendar days, not three array rows.
+  const uniqueDays = [...new Map(days.map((day) => [day.date, day])).values()].slice(0, 3);
   const means: number[] = [];
-  let anyFrostTrue = false;
-  let anyUnknown = false;
-  let covered = 0;
-  for (const d of days) {
-    if (d.tempMinC !== undefined && d.tempMaxC !== undefined) {
-      means.push((d.tempMinC + d.tempMaxC) / 2);
+  const frostFacts: boolean[] = [];
+  for (const d of uniqueDays) {
+    const tempMin = d.tempMinC;
+    const tempMax = d.tempMaxC;
+    if (typeof tempMin === 'number' && Number.isFinite(tempMin) &&
+        typeof tempMax === 'number' && Number.isFinite(tempMax)) {
+      means.push((tempMin + tempMax) / 2);
     }
-    if (d.frostRisk !== undefined) {
-      covered++;
-      if (d.frostRisk === true) anyFrostTrue = true;
-      if (d.frostRisk === 'unknown') anyUnknown = true;
+    if (typeof d.frostRisk === 'boolean') {
+      frostFacts.push(d.frostRisk);
     }
   }
   const threeDayMeanC = means.length > 0
     ? Math.round((means.reduce((a, b) => a + b, 0) / means.length) * 10) / 10
     : null;
-  const fullTemp = means.length === days.length && days.length === 3;
-  const fullFrost = covered === days.length && days.length === 3;
+  const temperatureComplete = uniqueDays.length === 3 && means.length === 3;
+  const frostComplete = uniqueDays.length === 3 && frostFacts.length === 3;
   const weather_data_status: WeatherDataStatus =
-    fullTemp && fullFrost ? 'available' : days.length > 0 ? 'partial' : 'unavailable';
-  let frostRisk: boolean | 'unknown' = 'unknown';
-  if (fullFrost) {
-    frostRisk = anyFrostTrue ? true : false;
-  } else if (anyFrostTrue) {
-    frostRisk = true;
-  }
-  return { weather_data_status, threeDayMeanC, frostRisk };
+    means.length === 0
+      ? 'unavailable'
+      : temperatureComplete && frostComplete
+        ? 'available'
+        : 'partial';
+  const frostRisk: boolean | 'unknown' = frostComplete
+    ? frostFacts.some(Boolean)
+    : 'unknown';
+  return {
+    weather_data_status,
+    threeDayMeanC,
+    frostRisk,
+    temperatureComplete,
+    frostComplete,
+  };
 }
 
 /** The set of concrete start methods a crop may attempt, given its overall method. */
@@ -184,33 +202,38 @@ function resolveAvailableMethods(
  */
 function assessWeatherForCrop(
   crop: SeasonalCropRow,
-  agg: { weather_data_status: WeatherDataStatus; threeDayMeanC: number | null; frostRisk: boolean | 'unknown' },
+  agg: AggregatedWeather,
 ): WeatherAssessment {
-  if (agg.weather_data_status !== 'available') {
-    return 'unknown'; // not enough reliable weather facts → no judgment
-  }
+  if (agg.weather_data_status === 'unavailable') return 'unknown';
+  const cropTempMin = crop.tempMin;
+  const cropTempMax = crop.tempMax;
+  const hasTemperatureRequirement = cropTempMin !== null && cropTempMax !== null;
+  const temperatureKnown = agg.temperatureComplete && hasTemperatureRequirement;
   if (
+    temperatureKnown &&
     agg.threeDayMeanC !== null &&
-    crop.tempMin !== null &&
-    crop.tempMax !== null &&
-    (agg.threeDayMeanC < crop.tempMin || agg.threeDayMeanC > crop.tempMax)
+    cropTempMin !== null &&
+    cropTempMax !== null &&
+    (agg.threeDayMeanC < cropTempMin || agg.threeDayMeanC > cropTempMax)
   ) {
     return 'temp_out_of_range';
   }
-  if (agg.frostRisk === true && crop.frostSensitive === true) {
+  const frostKnown = crop.frostSensitive === false || agg.frostComplete;
+  if (frostKnown && agg.frostRisk === true && crop.frostSensitive === true) {
     return 'frost_risk';
   }
-  return 'suitable';
+  return temperatureKnown && frostKnown ? 'suitable' : 'unknown';
 }
 
 /** True when reliable full weather data hard-filters this crop out of "now". */
 function isWeatherHardFiltered(
   crop: SeasonalCropRow,
-  agg: { weather_data_status: WeatherDataStatus; frostRisk: boolean | 'unknown' },
+  agg: AggregatedWeather,
   assessment: WeatherAssessment,
 ): boolean {
-  // AC-05: weather hard filters only run on complete, reliable data.
-  if (agg.weather_data_status !== 'available') return false;
+  // Temperature and frost are independent facts. A partial top-level status
+  // must not disable a hard filter whose own three-day fact is complete.
+  if (agg.weather_data_status === 'unavailable') return false;
   if (assessment === 'temp_out_of_range') return true;
   if (assessment === 'frost_risk' && crop.frostSensitive === true && agg.frostRisk === true) {
     return true;
@@ -246,7 +269,7 @@ export function buildSeasonalRecommendations(input: SeasonalEngineInput): Season
 
   const agg = input.weather
     ? aggregateWeather(input.weather)
-    : { weather_data_status: 'unavailable' as WeatherDataStatus, threeDayMeanC: null, frostRisk: 'unknown' as const };
+    : aggregateWeather([]);
   const terrace = input.terrace ?? null;
   const today = mmdd(input.date);
 
