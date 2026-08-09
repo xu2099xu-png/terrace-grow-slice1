@@ -17,7 +17,7 @@ test('S2-E2E-01 happy path: grape plan to persistent current stage', async ({ pa
   await page.getByText('会淋到雨').click();
   await page.getByRole('button', { name: '完成' }).click();
   // wizard navigates to blueberry plan; wait for it to settle before leaving
-  await page.waitForTimeout(1500);
+  await page.waitForURL('**/#/plan/crop-blueberry');
 
   // Home offers grape entry (reload to guarantee the SPA re-mounts Home).
   await page.goto('/#/');
@@ -73,6 +73,7 @@ test('S2-E2E-02 NO_MATCH: no start-planting button, no flow entry', async ({ pag
   await expect(page.getByText('露台是否淋雨？')).toBeVisible();
   await page.getByText('会淋到雨').click();
   await page.getByRole('button', { name: '完成' }).click();
+  await page.waitForURL('**/#/plan/crop-blueberry');
 
   // Open grape plan (reload to guarantee SPA re-mounts Home).
   await page.goto('/#/');
