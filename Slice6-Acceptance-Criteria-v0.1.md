@@ -1,11 +1,11 @@
 # Slice 6 Acceptance Criteria v0.1 - 全国区县位置、今日上下文与三 Tab IA
 
 > Status: DRAFT / NOT FROZEN
-> Baseline: Slice 5 final frozen product commit `TBD — waiting for Slice 5 PASS/FROZEN`
+> Baseline: Slice 5 final frozen product commit `5b91de6af0194fdb437fb858834fd5d7c47833d4`
 
-Slice 6 implementation MUST NOT begin until Slice 5 is externally declared
-PASS / FROZEN and the final Slice 5 product-code SHA replaces
-`TBD — waiting for Slice 5 PASS/FROZEN` in this document.
+Slice 5 has been externally declared PASS / FROZEN, and the final Slice 5
+product-code SHA is recorded above. Slice 6 remains DRAFT / NOT FROZEN;
+product-code implementation MUST NOT begin until this AC is final-frozen.
 
 This document is an acceptance contract draft. It is not implementation
 permission.
@@ -75,17 +75,18 @@ implementation baseline must be recorded as one exact 40-character product-code
 commit SHA:
 
 ```text
-Slice 5 final frozen product commit: <sha>
+Slice 5 final frozen product commit: 5b91de6af0194fdb437fb858834fd5d7c47833d4
 ```
 
-Current draft value is exactly:
+The recorded baseline value is exactly:
 
 ```text
-TBD — waiting for Slice 5 PASS/FROZEN
+5b91de6af0194fdb437fb858834fd5d7c47833d4
 ```
 
-While that exact value remains, this AC cannot be frozen and implementation is
-forbidden.
+Although the Slice 5 baseline gate is satisfied, this AC remains DRAFT / NOT
+FROZEN and implementation is forbidden until Slice 6 Freeze explicitly approves
+this contract.
 
 The baseline must not be:
 

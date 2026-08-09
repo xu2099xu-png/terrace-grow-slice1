@@ -2,16 +2,14 @@
 
 > Status: DRAFT / NOT APPROVED FOR IMPLEMENTATION.
 > Aligned draft: `Slice6-Acceptance-Criteria-v0.1.md`.
-> Baseline: Slice 5 final frozen product commit `TBD — waiting for Slice 5 PASS/FROZEN`.
+> Baseline: Slice 5 final frozen product commit `5b91de6af0194fdb437fb858834fd5d7c47833d4`.
 
 This plan is a drafting artifact only. Product-code implementation must not begin
-while the Slice 5 baseline remains
-`TBD — waiting for Slice 5 PASS/FROZEN` or while the Slice 6 AC is not frozen.
-Freeze may replace that value only with an externally accepted PASS/FROZEN exact
-40-character product-code SHA. A delivery report commit, branch, tag, candidate
-label, or non-40-character reference must be rejected. If this plan conflicts
-with the AC, the AC wins and this plan must be revised before implementation
-starts.
+while the Slice 6 AC is not frozen. The Slice 5 baseline gate has been satisfied
+by the externally accepted PASS/FROZEN exact 40-character product-code SHA above.
+A delivery report commit, branch, tag, candidate label, or non-40-character
+reference must be rejected. If this plan conflicts with the AC, the AC wins and
+this plan must be revised before implementation starts.
 
 ## 1. Scope Boundary
 
@@ -705,7 +703,7 @@ Rules:
 
 | AC | Implementation plan | Test evidence |
 | --- | --- | --- |
-| S6-AC-01 | Keep this plan draft while baseline is `TBD — waiting for Slice 5 PASS/FROZEN`; replace only with external PASS/FROZEN exact 40-char product SHA; add limited-Epic-supersession and no-broad-refactor stop checks. | Documentation review; SHA validator/evidence check; no product implementation until AC freeze. |
+| S6-AC-01 | Keep this plan draft while Slice 6 AC is not frozen; use only external PASS/FROZEN exact 40-char Slice 5 product SHA `5b91de6af0194fdb437fb858834fd5d7c47833d4`; add limited-Epic-supersession and no-broad-refactor stop checks. | Documentation review; SHA validator/evidence check; no product implementation until AC freeze. |
 | S6-AC-02 | Add `Region` schema, complete manifest, structured import/check scripts, municipality semantics, alias/retirement metadata, production image inclusion. | Region invariant tests, manifest complete-field gate, checksum gate, municipality no-fake-code fixture, import idempotence. |
 | S6-AC-03 | Add `/location/regions` with public `is_municipality`; add `/location/popular-cities` with exact city/municipality display-code rules; preserve `/supported-cities`. | HTTP exact-shape tests, municipality city-query-empty test, popular display-code tests, invalid query validation tests. |
 | S6-AC-04 | Update location resolver to return enabled district region or `null`; parse AMap adcode. | Provider fixture tests for success/null/failure/malformed/validation/privacy. |
@@ -859,8 +857,8 @@ npm run test:production-smoke
 
 The Slice 6 Delivery Report must include:
 
-- final Slice 5 baseline SHA replacing
-  `TBD — waiting for Slice 5 PASS/FROZEN`, and proof it is an external
+- final Slice 5 baseline SHA
+  `5b91de6af0194fdb437fb858834fd5d7c47833d4`, and proof it is an external
   PASS/FROZEN exact 40-character product-code SHA,
 - final Slice 6 product SHA,
 - AC-to-test evidence matrix,
@@ -897,8 +895,9 @@ The Slice 6 Delivery Report must include:
 
 Stop and revise AC/plan before coding if any task requires:
 
-- replacing `TBD — waiting for Slice 5 PASS/FROZEN` with anything other than an
-  external PASS/FROZEN exact 40-character product-code SHA,
+- replacing the Slice 5 baseline with anything other than the external
+  PASS/FROZEN exact 40-character product-code SHA
+  `5b91de6af0194fdb437fb858834fd5d7c47833d4`,
 - leaving any required region dataset manifest or calendar manifest field as
   `TBD` at Freeze,
 - leaving any required weather provider-contract manifest field as `TBD` at
