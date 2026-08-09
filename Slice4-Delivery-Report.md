@@ -1,14 +1,31 @@
 # Slice 4 Delivery Report - Production Foundation
 
-> Status: CANDIDATE FOR INDEPENDENT REVIEW
+> Status: PASS / FROZEN
 > Frozen AC: `Slice4-Acceptance-Criteria-v1.1.md`
 > Slice 3 baseline: `394ea65782f00a1589429dd0adadfc107657f86d`
 > Slice 4 frozen-design commit: `5b2df953f209dc620fc07336253d96b77bcb73c0`
 > Unique code candidate: `853852d1d1c118f2f6765b280c4f0ef3d3299a29`
 > Original Slice 4 code candidate: `7919bf867b1c33ca7dd089a7a211a7ed75416a39`
 
-This report records implementation and execution evidence. It does not declare
-Slice 4 PASS/FROZEN; that decision remains with independent review.
+This report records implementation and execution evidence. Independent final
+audit has declared Slice 4 PASS/FROZEN. This report/process HEAD does not
+replace the frozen product-code candidate.
+
+## 0. Final Independent Audit
+
+Independent final audit result: **Slice 4 = PASS / FROZEN**.
+
+- Blocking: 0.
+- Frozen product-code candidate:
+  `853852d1d1c118f2f6765b280c4f0ef3d3299a29`.
+- Exact candidate hosted CI run `31292692456`: SUCCESS.
+- Current PR process/report HEAD hosted CI run `31293133519`: SUCCESS.
+- The Playwright closure fix only replaced fixed waits with `waitForURL`; it
+  did not delete or weaken assertions.
+- Commits after `853852d1d1c118f2f6765b280c4f0ef3d3299a29` are AGENTS/report
+  documentation changes only and do not supersede the frozen product-code
+  candidate.
+- Slice 5 may begin from the frozen Slice 4 baseline.
 
 ## 1. Scope Integrity
 
