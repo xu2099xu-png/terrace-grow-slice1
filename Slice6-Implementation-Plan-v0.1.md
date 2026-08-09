@@ -300,7 +300,8 @@ The administrative source manifest is frozen in AC section 0.1:
   `https://dmfw.mca.gov.cn/9095/xzqh/getList?code=&maxLevel=3`,
 - snapshot date: `2026-08-09`,
 - import date: `2026-08-09`,
-- canonical code standard: official 12-digit MCA administrative division code,
+- canonical code standard: GB/T 2260-compatible 6-digit public `admin_code`
+  derived from the first six digits of the official 12-digit MCA source code,
 - Slice 6 scope: Mainland China only; exclude Hong Kong SAR `810000000000` and
   Macao SAR `820000000000` from enabled rows,
 - row counts: 31 province, 333 city/prefecture, 2847 district/county, 0
@@ -310,7 +311,7 @@ The administrative source manifest is frozen in AC section 0.1:
 - raw source SHA-256:
   `a880ff2c2fc76f7e15c42dcef9476bd353fd48a2ce3ea397140358211636700e`,
 - normalized mainland hierarchy SHA-256:
-  `4ef72188689412d5f1ee49fd28bd8cc228a0a942d2adad3d61d595f20e62b42d`,
+  `1e72730c812e5306081dda3745086d6cfef58333332aad2faf0f8bd97b8960f0`,
 - initial alias/supersession SHA-256 for minified `[]`:
   `4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`.
 
