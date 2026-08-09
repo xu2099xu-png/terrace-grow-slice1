@@ -1,7 +1,6 @@
 # Slice 4 Implementation Plan v1.1 - Production Foundation
 
-> Status: DRAFT - implementation starts only after
-> `Slice4-Acceptance-Criteria-v1.1.md` is independently reviewed and frozen.
+> Status: FROZEN - implementation authorized after conditional-review closure.
 > Baseline commit: `394ea65782f00a1589429dd0adadfc107657f86d`
 
 ## 1. Architecture Decision
@@ -113,8 +112,9 @@ Add a `HealthModule` with:
 - Content readiness service using `GovernanceService`/`AgriDataService`, not raw
   draft-inclusive counts. It requires one coherent governed Crop +
   EnvironmentRequirement + SowingCalendar tuple from the production read path.
-- Exact content response contracts for `development_fixtures`, `ready`, and
-  `not_ready`, including HTTP 503 for the latter.
+- Exact content response contracts for `development_fixtures`, `test_fixtures`,
+  `ready`, and `not_ready`, including HTTP 503 for the latter. Slice 4 Gate tests
+  exercise each APP_ENV branch independently.
 
 Infrastructure readiness and content readiness remain separate. This lets an
 empty deployment run for migration/operations while clearly preventing a false
@@ -203,6 +203,8 @@ Do not touch the five untracked architecture documents.
 - Rate-limit isolation and 429 contract.
 - Forwarded-header spoofing through the documented one-hop ingress.
 - Health success/failure and production content-empty behavior.
+- Content health exact status/body for development, test, production-ready, and
+  production-not-ready branches.
 
 ### Regression
 

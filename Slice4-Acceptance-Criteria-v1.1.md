@@ -1,6 +1,6 @@
 # Slice 4 Acceptance Criteria v1.1 - Production Foundation
 
-> Status: DRAFT FOR FREEZE
+> Status: FROZEN
 > Baseline: `394ea65782f00a1589429dd0adadfc107657f86d`
 > Product state at baseline: Slice 1 CLOSED / ACCEPTED, Slice 2 PASS / FROZEN,
 > Slice 3 PASS / FROZEN.
@@ -198,6 +198,9 @@ Add public endpoints with no secret-bearing output:
 development:
 200 { "status": "development_fixtures" }
 
+test:
+200 { "status": "test_fixtures" }
+
 production with usable governed content:
 200 { "status": "ready" }
 
@@ -215,6 +218,9 @@ governed query path), not duplicate governance with raw Prisma counts.
 Production with `ALLOW_DRAFT_FIXTURES=true` is rejected before HTTP startup by
 S4-AC-01, so it is not an HTTP runtime state. Separate service-level governance
 tests must still prove that draft rows cannot satisfy the coherent-content query.
+
+The Slice 4 Gate must assert all four content-health branches independently:
+development fixtures, test fixtures, production ready, and production not-ready.
 
 The server entrypoint's successful `prisma migrate deploy` is the deployment
 migration gate. Readiness must not implement a second migration-state algorithm
