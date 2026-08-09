@@ -3,8 +3,10 @@ import { mount, flushPromises } from '@vue/test-utils';
 import * as Vant from 'vant';
 import PerennialPlan from './PerennialPlan.vue';
 
+const push = vi.fn();
+
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+  useRouter: () => ({ push, back: vi.fn() }),
 }));
 
 // mock the api client module entirely
@@ -104,6 +106,38 @@ function matchPlan() {
   };
 }
 
+function grapePlan() {
+  return {
+    ...matchPlan(),
+    recommended_varieties: [
+      {
+        varietyId: 'var-grape-kyoho',
+        name: '巨峰',
+        score: 120,
+        reasons: ['当前露台条件适合葡萄'],
+        traits: { chill_hours_min: 0, heat_tolerance: 4, shade_tolerance: 2 },
+      },
+    ],
+    selected_variety_id: 'var-grape-kyoho',
+    container: {
+      ...matchPlan().container,
+      selected_type_id: 'ct-clay-pot',
+      preferredTypes: [{ id: 'ct-clay-pot', name: '陶土盆', drainage: 4, aeration: 4, waterRetention: 2 }],
+    },
+    next_action: '按葡萄方案开始种植',
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('PerennialPlan.vue — NO_MATCH short-circuit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -154,6 +188,7 @@ describe('PerennialPlan.vue — NO_MATCH short-circuit', () => {
     mockApi.post
       .mockResolvedValueOnce({ data: matchPlan() })
       .mockResolvedValueOnce({
+        status: 200,
         data: {
           status: 'answered',
           answer: '推荐理由',
@@ -187,5 +222,43 @@ describe('PerennialPlan.vue — NO_MATCH short-circuit', () => {
       selected_container_type_id: 'ct-fabric-bag',
       selected_variety_id: 'var-oneal',
     });
+  });
+
+  it('reloads on crop prop change and ignores stale plan responses', async () => {
+    const blueberry = deferred<{ data: ReturnType<typeof matchPlan> }>();
+    mockApi.post.mockImplementation((url: string, body: any) => {
+      if (url === '/recommendations/perennial' && body.crop_id === 'crop-blueberry') {
+        return blueberry.promise;
+      }
+      if (url === '/recommendations/perennial' && body.crop_id === 'crop-grape') {
+        return Promise.resolve({ data: grapePlan() });
+      }
+      return Promise.reject(new Error(`unexpected post ${url}`));
+    });
+    mockApi.get.mockResolvedValue({ data: [] });
+
+    const wrapper = mount(PerennialPlan, {
+      props: { cropId: 'crop-blueberry' },
+      global: { plugins: [Vant] },
+      attachTo: document.body,
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('生成方案中');
+
+    await wrapper.setProps({ cropId: 'crop-grape' });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('巨峰');
+    expect(wrapper.text()).not.toContain('奥尼尔');
+
+    blueberry.resolve({ data: matchPlan() });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('巨峰');
+    expect(wrapper.text()).not.toContain('奥尼尔');
+
+    await wrapper.get('button.van-button--success').trigger('click');
+    expect(push).toHaveBeenCalledWith('/planting-start?crop_id=crop-grape&container_type_id=ct-clay-pot&variety_id=var-grape-kyoho');
   });
 });

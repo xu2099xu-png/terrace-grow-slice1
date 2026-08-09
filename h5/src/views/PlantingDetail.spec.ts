@@ -60,6 +60,7 @@ describe('PlantingDetail.vue AI explanation entry', () => {
   it('renders core actions, posts planting typed refs, and keeps completion action', async () => {
     mockApi.get.mockResolvedValue({ data: nowResponse });
     mockApi.post.mockResolvedValueOnce({
+      status: 200,
       data: {
         status: 'answered',
         answer: '当前阶段需要完成定植操作',

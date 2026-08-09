@@ -10,9 +10,27 @@
     <div v-else-if="error" class="error">
       <p>{{ error }}</p>
       <van-button block round @click="load">重试</van-button>
+      <van-button block round plain type="primary" @click="showCityChooser">更换城市</van-button>
+      <van-button block round plain @click="router.push('/')">返回首页</van-button>
+    </div>
+
+    <div v-else-if="choosingCity" class="content">
+      <section class="context-head">
+        <h2>选择城市</h2>
+        <p>用于匹配当前日期和本地气候区</p>
+      </section>
+      <CityPicker @select="selectCity" />
     </div>
 
     <div v-else-if="result" class="content">
+      <section class="context-head">
+        <div>
+          <h2>{{ cityDisplayName }}</h2>
+          <p>服务端日期 {{ result.date }} · 气候区 {{ result.climate_zone_code || '—' }}</p>
+        </div>
+        <van-button size="small" round plain type="primary" @click="showCityChooser">更换城市</van-button>
+      </section>
+
       <!-- 顶部状态提示（AC-07/AC-09） -->
       <div v-if="result.climate_data_status === 'unsupported'" class="banner warn">
         当前地区的种植数据还在完善
@@ -26,7 +44,11 @@
           v-for="item in result.items"
           :key="item.crop_id"
           class="crop-card"
+          role="button"
+          tabindex="0"
           @click="goDetail(item)"
+          @keydown.enter.prevent="goDetail(item)"
+          @keydown.space.prevent="goDetail(item)"
         >
           <div class="card-head">
             <span class="name">{{ item.crop_name }}</span>
@@ -55,16 +77,22 @@
           </div>
         </div>
       </template>
-      <van-empty v-else description="当前没有可种的作物" />
+      <van-empty v-else description="当前没有可种的作物">
+        <div class="empty-actions">
+          <van-button round type="primary" @click="showCityChooser">更换城市</van-button>
+          <van-button round plain @click="router.push('/')">返回首页</van-button>
+        </div>
+      </van-empty>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import api from '../api/client';
 import AiExplanationPanel from '../components/AiExplanationPanel.vue';
+import CityPicker from '../components/CityPicker.vue';
 
 interface SeasonalItem {
   crop_id: string;
@@ -76,6 +104,9 @@ interface SeasonalItem {
   warnings: string[];
 }
 interface SeasonalResult {
+  date: string;
+  city_code: string;
+  climate_zone_code?: string;
   climate_data_status: string;
   weather_data_status: string;
   items: SeasonalItem[];
@@ -86,7 +117,11 @@ const route = useRoute();
 const loading = ref(true);
 const error = ref('');
 const result = ref<SeasonalResult | null>(null);
-const cityCode = computed(() => String(route.query.city_code || ''));
+const selectedCityCode = ref(String(route.query.city_code || ''));
+const selectedCityName = ref('');
+const choosingCity = ref(!selectedCityCode.value);
+const cityCode = computed(() => selectedCityCode.value);
+const cityDisplayName = computed(() => selectedCityName.value || `城市 ${cityCode.value}`);
 
 // closure-6: keep the city context when opening the crop detail so the detail
 // page only shows the current climate zone's sowing windows.
@@ -121,13 +156,16 @@ function startMethodLabel(methods: string[]): string {
 }
 
 async function load() {
-  loading.value = true;
   error.value = '';
+  result.value = null;
+  if (!cityCode.value) {
+    choosingCity.value = true;
+    loading.value = false;
+    return;
+  }
+  loading.value = true;
+  choosingCity.value = false;
   try {
-    if (!cityCode.value) {
-      error.value = '缺少城市信息';
-      return;
-    }
     const res = await api.get(`/seasons/now?city_code=${cityCode.value}`);
     result.value = res.data;
   } catch (e: any) {
@@ -136,6 +174,31 @@ async function load() {
     loading.value = false;
   }
 }
+
+function selectCity(nextCityCode: string, nextCityName: string) {
+  selectedCityCode.value = nextCityCode;
+  selectedCityName.value = nextCityName;
+  router.replace({ path: '/seasons/now', query: { city_code: nextCityCode } });
+  load();
+}
+
+function showCityChooser() {
+  error.value = '';
+  result.value = null;
+  choosingCity.value = true;
+  loading.value = false;
+}
+
+watch(
+  () => route.query.city_code,
+  (nextCityCode) => {
+    const normalized = String(nextCityCode || '');
+    if (normalized === selectedCityCode.value) return;
+    selectedCityCode.value = normalized;
+    selectedCityName.value = '';
+    load();
+  },
+);
 
 onMounted(load);
 </script>
@@ -150,6 +213,29 @@ onMounted(load);
 }
 .content {
   padding: 16px;
+}
+.context-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.context-head h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  line-height: 1.3;
+}
+.context-head p {
+  margin: 0;
+  color: #666;
+  font-size: 13px;
+}
+.empty-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 .banner {
   border-radius: 8px;

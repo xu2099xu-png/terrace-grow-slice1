@@ -57,6 +57,11 @@
         请求太频繁，请稍后再试
       </div>
 
+      <div v-if="requestError" class="state error" data-testid="ai-error">
+        <p>{{ requestError }}</p>
+        <van-button size="small" round :disabled="!canSubmit" @click="submit">重试</van-button>
+      </div>
+
       <div v-if="response" class="answer-block">
         <div class="state" data-testid="ai-state">{{ stateLabel }}</div>
         <p class="answer-text" data-testid="ai-answer">{{ response.answer }}</p>
@@ -126,6 +131,7 @@ const question = ref('');
 const loading = ref(false);
 const response = ref<AiAskResponse | null>(null);
 const rateLimited = ref(false);
+const requestError = ref('');
 
 const trimmedQuestion = computed(() => question.value.trim());
 const canSubmit = computed(() => {
@@ -146,6 +152,7 @@ const stateLabel = computed(() => {
 function open() {
   response.value = null;
   rateLimited.value = false;
+  requestError.value = '';
   question.value = props.defaultQuestion;
   show.value = true;
 }
@@ -175,26 +182,39 @@ async function submit() {
 
   loading.value = true;
   rateLimited.value = false;
+  requestError.value = '';
   response.value = null;
   try {
     const res = await api.post('/ai/ask', requestBody());
+    if (res.status !== 200 || !isAiAskResponse(res.data)) {
+      requestError.value = '解释请求返回异常，请重试';
+      return;
+    }
     response.value = res.data;
   } catch (e: any) {
     if (e.response?.status === 429) {
       rateLimited.value = true;
       return;
     }
-    response.value = {
-      status: 'provider_unavailable',
-      answer: e.response?.data?.message || '暂时无法生成解释，请稍后再试',
-      source: 'rules',
-      cache_hit: false,
-      citations: [],
-      warnings: [],
-    };
+    if (e.response?.status === 401 || e.response?.status === 403) {
+      return;
+    }
+    requestError.value = e.response?.data?.message || '解释请求失败，请检查网络后重试';
   } finally {
     loading.value = false;
   }
+}
+
+function isAiAskResponse(value: any): value is AiAskResponse {
+  if (!value || typeof value !== 'object') return false;
+  if (!['answered', 'disabled', 'provider_unavailable', 'insufficient_data'].includes(value.status)) return false;
+  if (!['ai', 'rules'].includes(value.source)) return false;
+  return (
+    typeof value.answer === 'string' &&
+    typeof value.cache_hit === 'boolean' &&
+    Array.isArray(value.citations) &&
+    Array.isArray(value.warnings)
+  );
 }
 </script>
 

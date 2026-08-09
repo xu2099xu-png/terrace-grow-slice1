@@ -168,7 +168,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import api from '../api/client';
@@ -268,6 +268,7 @@ const showMaterials = ref(false);
 const materials = ref<any[]>([]);
 const selectedMaterials = ref<string[]>([]);
 const selectedContainerId = ref<string>('');
+let loadSeq = 0;
 
 const suitabilityLabel = computed(() => {
   const map: Record<string, string> = {
@@ -309,34 +310,54 @@ const totalLiters = computed(() => {
   return Math.round(plan.value.soil_mix.mix.reduce((s, m) => s + m.liters, 0) * 10) / 10;
 });
 
-async function load() {
-  loading.value = true;
+function resetPlanState() {
+  plan.value = null;
+  materials.value = [];
+  selectedMaterials.value = [];
+  selectedContainerId.value = '';
   error.value = false;
+  showMaterials.value = false;
+}
+
+async function load() {
+  const seq = ++loadSeq;
+  const cropId = props.cropId;
+  resetPlanState();
+  loading.value = true;
   try {
-    const res = await api.post('/recommendations/perennial', { crop_id: props.cropId });
+    const res = await api.post('/recommendations/perennial', { crop_id: cropId });
+    if (seq !== loadSeq || cropId !== props.cropId) return;
     plan.value = res.data;
     selectedContainerId.value = res.data.container?.selected_type_id || '';
 
     // fetch materials for dialog (explicit crop context — no hardcoded crop)
-    const matRes = await api.get('/materials', { params: { crop_id: props.cropId } });
+    const matRes = await api.get('/materials', { params: { crop_id: cropId } });
+    if (seq !== loadSeq || cropId !== props.cropId) return;
     materials.value = matRes.data;
     const mineRes = await api.get('/materials/mine');
+    if (seq !== loadSeq || cropId !== props.cropId) return;
     selectedMaterials.value = mineRes.data.map((m: any) => m.materialId);
   } catch (e) {
-    error.value = true;
+    if (seq === loadSeq && cropId === props.cropId) {
+      error.value = true;
+    }
   } finally {
-    loading.value = false;
+    if (seq === loadSeq && cropId === props.cropId) {
+      loading.value = false;
+    }
   }
 }
 
 async function onContainerChange() {
   if (!plan.value || !selectedContainerId.value) return;
+  const cropId = props.cropId;
   try {
     const res = await api.post('/recommendations/perennial', {
-      crop_id: props.cropId,
+      crop_id: cropId,
       selected_container_type_id: selectedContainerId.value,
       selected_variety_id: plan.value.selected_variety_id || undefined,
     });
+    if (cropId !== props.cropId) return;
     plan.value = res.data;
     selectedContainerId.value = res.data.container?.selected_type_id || '';
     showToast('已更新容器方案');
@@ -346,14 +367,16 @@ async function onContainerChange() {
 }
 
 async function recalculateSoil() {
+  const cropId = props.cropId;
   try {
     await api.put('/users/me/materials', { material_ids: selectedMaterials.value });
     const res = await api.post('/soil/calculate', {
-      crop_id: props.cropId,
+      crop_id: cropId,
       container_type_id: plan.value?.container?.selected_type_id,
       selected_variety_id: plan.value?.selected_variety_id || null,
       material_ids: selectedMaterials.value,
     });
+    if (cropId !== props.cropId) return;
     if (plan.value) {
       plan.value.soil_mix = res.data.soil;
       plan.value.missing_materials = res.data.soil?.missing || [];
@@ -366,10 +389,12 @@ async function recalculateSoil() {
 }
 
 function goStartPlanting() {
-  if (!plan.value || !plan.value.container?.selected_type_id) return;
+  if (loading.value || !plan.value) return;
+  const containerTypeId = selectedContainerId.value || plan.value.container?.selected_type_id;
+  if (!containerTypeId) return;
   const query = new URLSearchParams({
     crop_id: props.cropId,
-    container_type_id: plan.value.container.selected_type_id,
+    container_type_id: containerTypeId,
   });
   if (plan.value.selected_variety_id) {
     query.set('variety_id', plan.value.selected_variety_id);
@@ -377,7 +402,9 @@ function goStartPlanting() {
   router.push(`/planting-start?${query.toString()}`);
 }
 
-onMounted(load);
+watch(() => props.cropId, () => {
+  void load();
+}, { immediate: true });
 </script>
 
 <style scoped>

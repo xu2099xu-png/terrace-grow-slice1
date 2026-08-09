@@ -7,8 +7,9 @@ import { test, expect } from '@playwright/test';
  * → action still completed.
  */
 test('S2-E2E-01 happy path: grape plan to persistent current stage', async ({ page }) => {
-  await page.goto('/#/terrace');
-  await page.locator('input').first().fill('beijing');
+  await page.goto('/#/terrace?target_crop_id=crop-blueberry');
+  await expect(page.getByText('您所在的城市？')).toBeVisible();
+  await page.getByRole('button', { name: '北京' }).click();
   await page.getByRole('button', { name: '下一步' }).click();
   await expect(page.getByText('露台日照情况')).toBeVisible();
   await page.getByText('阳光充足（大部分白天都有阳光）').click();
@@ -59,8 +60,9 @@ test('S2-E2E-01 happy path: grape plan to persistent current stage', async ({ pa
  */
 test('S2-E2E-02 NO_MATCH: no start-planting button, no flow entry', async ({ page }) => {
   // Create terrace with north + rarely => LOW 0-1h => NO_MATCH.
-  await page.goto('/#/terrace');
-  await page.locator('input').first().fill('beijing');
+  await page.goto('/#/terrace?target_crop_id=crop-blueberry');
+  await expect(page.getByText('您所在的城市？')).toBeVisible();
+  await page.getByRole('button', { name: '北京' }).click();
   await page.getByRole('button', { name: '下一步' }).click();
   await expect(page.getByText('露台日照情况')).toBeVisible();
   await page.getByText('我不太确定').click();

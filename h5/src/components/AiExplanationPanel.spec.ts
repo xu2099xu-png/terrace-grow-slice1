@@ -24,6 +24,10 @@ const answered = {
   warnings: ['仅供参考'],
 };
 
+function ok(data: unknown) {
+  return { status: 200, data };
+}
+
 function mountPanel(props = {}) {
   return mount(AiExplanationPanel, {
     props: {
@@ -52,7 +56,7 @@ describe('AiExplanationPanel.vue', () => {
   });
 
   it('posts exact perennial typed refs without agricultural facts', async () => {
-    mockApi.post.mockResolvedValueOnce({ data: answered });
+    mockApi.post.mockResolvedValueOnce(ok(answered));
     const wrapper = mountPanel();
 
     await ask(wrapper);
@@ -72,7 +76,7 @@ describe('AiExplanationPanel.vue', () => {
   });
 
   it('posts exact seasonal typed refs without recommendation facts', async () => {
-    mockApi.post.mockResolvedValueOnce({ data: answered });
+    mockApi.post.mockResolvedValueOnce(ok(answered));
     const wrapper = mountPanel({
       contextType: 'seasonal_item',
       cityCode: 'beijing',
@@ -96,7 +100,7 @@ describe('AiExplanationPanel.vue', () => {
   });
 
   it('posts exact planting typed refs without lifecycle facts', async () => {
-    mockApi.post.mockResolvedValueOnce({ data: answered });
+    mockApi.post.mockResolvedValueOnce(ok(answered));
     const wrapper = mountPanel({
       contextType: 'planting_now',
       plantingId: 'planting-1',
@@ -119,7 +123,7 @@ describe('AiExplanationPanel.vue', () => {
   });
 
   it('renders answered status, cache marker, citations, and warnings', async () => {
-    mockApi.post.mockResolvedValueOnce({ data: answered });
+    mockApi.post.mockResolvedValueOnce(ok(answered));
     const wrapper = mountPanel();
 
     await ask(wrapper);
@@ -135,16 +139,14 @@ describe('AiExplanationPanel.vue', () => {
     ['provider_unavailable', 'AI 暂时不可用，以下为规则解释'],
     ['insufficient_data', '暂无足够信息'],
   ])('renders %s state', async (status, label) => {
-    mockApi.post.mockResolvedValueOnce({
-      data: {
+    mockApi.post.mockResolvedValueOnce(ok({
         status,
         answer: '规则返回',
         source: 'rules',
         cache_hit: false,
         citations: [],
         warnings: [],
-      },
-    });
+      }));
     const wrapper = mountPanel();
 
     await ask(wrapper);
@@ -163,16 +165,14 @@ describe('AiExplanationPanel.vue', () => {
   });
 
   it('escapes answer as plain text', async () => {
-    mockApi.post.mockResolvedValueOnce({
-      data: {
+    mockApi.post.mockResolvedValueOnce(ok({
         status: 'answered',
         answer: '<b>unsafe</b><script>alert(1)</script>',
         source: 'ai',
         cache_hit: false,
         citations: [],
         warnings: [],
-      },
-    });
+      }));
     const wrapper = mountPanel();
 
     await ask(wrapper);
@@ -180,5 +180,44 @@ describe('AiExplanationPanel.vue', () => {
     expect(wrapper.get('[data-testid="ai-answer"]').text()).toBe('<b>unsafe</b><script>alert(1)</script>');
     expect(wrapper.html()).toContain('&lt;b&gt;unsafe&lt;/b&gt;');
     expect(wrapper.html()).not.toContain('<script>alert(1)</script>');
+  });
+
+  it('renders retryable request error for non-429 HTTP failure without fake fallback', async () => {
+    mockApi.post.mockRejectedValueOnce({ response: { status: 500, data: { message: '服务异常' } } });
+    const wrapper = mountPanel();
+
+    await ask(wrapper);
+
+    expect(wrapper.get('[data-testid="ai-error"]').text()).toContain('服务异常');
+    expect(wrapper.find('[data-testid="ai-state"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="ai-answer"]').exists()).toBe(false);
+  });
+
+  it('leaves 401 to the shared identity/client path without fake fallback', async () => {
+    mockApi.post.mockRejectedValueOnce({ response: { status: 401 } });
+    const wrapper = mountPanel();
+
+    await ask(wrapper);
+
+    expect(wrapper.find('[data-testid="ai-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="ai-state"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="ai-answer"]').exists()).toBe(false);
+  });
+
+  it('rejects unexpected 200 response shape instead of rendering an unknown machine state', async () => {
+    mockApi.post.mockResolvedValueOnce(ok({
+      status: 'fallback',
+      answer: 'bad',
+      source: 'rules',
+      cache_hit: false,
+      citations: [],
+      warnings: [],
+    }));
+    const wrapper = mountPanel();
+
+    await ask(wrapper);
+
+    expect(wrapper.get('[data-testid="ai-error"]').text()).toContain('解释请求返回异常');
+    expect(wrapper.find('[data-testid="ai-state"]').exists()).toBe(false);
   });
 });

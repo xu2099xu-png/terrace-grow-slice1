@@ -5,13 +5,20 @@
     <div v-if="step === 1" class="step">
       <h2>您所在的城市？</h2>
       <p class="hint">用于匹配气候区与需冷量估算</p>
-      <van-cell-group inset>
-        <van-field
-          v-model="cityCode"
-          label="城市"
-          placeholder="请输入城市拼音，如 beijing"
-          :rules="[{ required: true }]"
-        />
+      <van-cell-group inset title="选择城市">
+        <van-cell v-if="cityLoading" title="城市列表加载中…" />
+        <van-cell
+          v-for="c in cities"
+          :key="c.city_code"
+          :title="c.city_name"
+          clickable
+          @click="cityCode = c.city_code"
+        >
+          <template #right-icon>
+            <van-icon v-if="cityCode === c.city_code" name="success" color="#07c160" />
+          </template>
+        </van-cell>
+        <van-empty v-if="!cityLoading && !cities.length" description="暂无可选城市" />
       </van-cell-group>
       <div class="actions">
         <van-button type="primary" block round @click="nextStep" :disabled="!cityCode">下一步</van-button>
@@ -117,12 +124,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import api from '../api/client';
 
 const router = useRouter();
+const route = useRoute();
 const step = ref(1);
 const cityCode = ref('');
 const sunExposureLevel = ref('');
@@ -130,12 +138,22 @@ const orientation = ref('');
 const timeObs = ref('');
 const rainExposed = ref<boolean | null>(null);
 const loading = ref(false);
+const cityLoading = ref(false);
+const cities = ref<{ city_code: string; city_name: string }[]>([]);
+const targetCropId = computed(() => {
+  const value = route.query.target_crop_id;
+  return typeof value === 'string' && value ? value : null;
+});
+const returnTarget = computed(() => {
+  const value = route.query.return_to;
+  return typeof value === 'string' && value === 'mine' ? 'mine' : null;
+});
 
 function goBack() {
   if (step.value > 1) {
     step.value--;
   } else {
-    router.push('/');
+    router.push(returnTarget.value === 'mine' ? '/mine' : '/');
   }
 }
 
@@ -152,16 +170,6 @@ function nextStep() {
 async function submit() {
   loading.value = true;
   try {
-    // 1. anonymous auth
-    let token = localStorage.getItem('token');
-    if (!token) {
-      const deviceId = 'h5-' + Math.random().toString(36).slice(2);
-      const authRes = await api.post('/auth/anonymous', { device_id: deviceId });
-      token = authRes.data.token;
-      localStorage.setItem('token', token);
-    }
-
-    // 2. create terrace
     const payload: any = {
       name: '我的露台',
       cityCode: cityCode.value,
@@ -175,14 +183,48 @@ async function submit() {
     }
     await api.post('/terraces', payload);
 
-    // 3. navigate to plan (blueberry hardcoded for slice 1)
-    router.push('/plan/crop-blueberry');
+    if (targetCropId.value) {
+      router.push(`/plan/${targetCropId.value}`);
+    } else {
+      router.push('/mine');
+    }
   } catch (e: any) {
     showToast(e.response?.data?.message || '出错了，请重试');
   } finally {
     loading.value = false;
   }
 }
+
+async function loadCities() {
+  cityLoading.value = true;
+  try {
+    const res = await api.get('/location/supported-cities');
+    cities.value = res.data;
+  } catch (e) {
+    showToast('城市列表加载失败');
+  } finally {
+    cityLoading.value = false;
+  }
+}
+
+async function prefillExistingProfile() {
+  try {
+    const res = await api.get('/terraces/mine');
+    const profile = res.data;
+    if (!profile) return;
+    cityCode.value = profile.cityCode || '';
+    sunExposureLevel.value = profile.sunExposureLevel || '';
+    orientation.value = profile.sunOrientationRaw || '';
+    timeObs.value = profile.sunTimeObsRaw || '';
+    rainExposed.value = typeof profile.rainExposed === 'boolean' ? profile.rainExposed : null;
+  } catch (e) {
+    // New users have no profile yet; keep the form blank.
+  }
+}
+
+onMounted(async () => {
+  await Promise.all([loadCities(), prefillExistingProfile()]);
+});
 </script>
 
 <style scoped>
