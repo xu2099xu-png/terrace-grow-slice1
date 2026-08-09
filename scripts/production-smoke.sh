@@ -12,6 +12,8 @@ export POSTGRES_DB="terrace_prod_test"
 export DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
 export JWT_SECRET="slice4-container-smoke-jwt-secret-value-0001"
 export CORS_ORIGINS="http://127.0.0.1:${H5_PORT}"
+export APP_ENV="production"
+export AI_PROVIDER="off"
 export H5_PORT
 
 compose() {
@@ -78,6 +80,25 @@ curl -sS -X POST -H 'Content-Type: application/json' \
   -d '{"device_id":"production-smoke-device"}' \
   "$BASE_URL/api/auth/anonymous" >"$tmp/auth.json"
 TOKEN="$(node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync(process.argv[1]));if(!x.token)process.exit(1);process.stdout.write(x.token)" "$tmp/auth.json")"
+
+ai_code="$(curl -sS -o "$tmp/ai.json" -w '%{http_code}' -X POST \
+  -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
+  -d '{"context_type":"seasonal_item","question":"为什么现在种它？","city_code":"beijing","crop_id":"crop-carrot"}' \
+  "$BASE_URL/api/ai/ask")"
+[ "$ai_code" = "200" ] || fail "AI off draft-free context must return 200"
+node - "$tmp/ai.json" <<'NODE' || fail "AI off insufficient_data body"
+const fs = require('node:fs');
+const body = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const expectedKeys = ['answer', 'cache_hit', 'citations', 'source', 'status', 'warnings'];
+const actualKeys = Object.keys(body).sort();
+if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) process.exit(1);
+if (body.status !== 'insufficient_data') process.exit(1);
+if (body.answer !== '') process.exit(1);
+if (body.source !== 'rules') process.exit(1);
+if (body.cache_hit !== false) process.exit(1);
+if (!Array.isArray(body.citations) || body.citations.length !== 0) process.exit(1);
+if (!Array.isArray(body.warnings)) process.exit(1);
+NODE
 
 curl -sS -H "Authorization: Bearer $TOKEN" "$BASE_URL/api/materials" >"$tmp/materials.json"
 [ "$(cat "$tmp/materials.json")" = '[]' ] || fail "draft materials leaked"

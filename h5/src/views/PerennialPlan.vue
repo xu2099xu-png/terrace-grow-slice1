@@ -130,6 +130,17 @@
         </div>
       </template>
 
+      <div class="actions">
+        <AiExplanationPanel
+          context-type="perennial_plan"
+          :crop-id="props.cropId"
+          :selected-container-type-id="selectedContainerId || plan.container?.selected_type_id || undefined"
+          :selected-variety-id="plan.selected_variety_id || undefined"
+          default-question="为什么推荐这个种植方案？"
+          button-text="解释这个方案"
+        />
+      </div>
+
       <!-- 材料弹窗 -->
       <van-dialog
         v-model:show="showMaterials"
@@ -161,6 +172,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import api from '../api/client';
+import AiExplanationPanel from '../components/AiExplanationPanel.vue';
 
 interface RankedVariety {
   varietyId: string;

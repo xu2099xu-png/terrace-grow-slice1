@@ -18,6 +18,7 @@
     "test:slice2-gate": "vitest run test/slice2-gate.spec.ts",
     "test:slice3-gate": "vitest run test/slice3-gate.spec.ts",
     "test:slice4-gate": "vitest run test/slice4-gate.spec.ts src/config/runtime-config.spec.ts",
+    "test:slice5-gate": "vitest run test/slice5-gate.spec.ts test/slice5-http.spec.ts src/ai src/config/runtime-config.spec.ts",
     "test:migration-upgrade": "node scripts/migration-upgrade-test.js",
     "test:e2e": "node test/integration-e2e.js",
     "test:h5": "npm --prefix ../h5 run test",

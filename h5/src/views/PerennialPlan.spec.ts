@@ -149,4 +149,43 @@ describe('PerennialPlan.vue — NO_MATCH short-circuit', () => {
     expect(html).toContain('查看/调整我的材料');
     expect(html).toContain('推荐品种');
   });
+
+  it('AI explanation sends current plan refs only after user submits', async () => {
+    mockApi.post
+      .mockResolvedValueOnce({ data: matchPlan() })
+      .mockResolvedValueOnce({
+        data: {
+          status: 'answered',
+          answer: '推荐理由',
+          source: 'ai',
+          cache_hit: false,
+          citations: [{ fact_id: 'fact-1', label: '容器', value: '无纺布美植袋', unit: null }],
+          warnings: [],
+        },
+      });
+    mockApi.get.mockResolvedValueOnce({ data: [] }); // materials
+    mockApi.get.mockResolvedValueOnce({ data: [] }); // /materials/mine
+
+    const wrapper = mount(PerennialPlan, {
+      props: { cropId: 'crop-blueberry' },
+      global: { plugins: [Vant] },
+      attachTo: document.body,
+    });
+    await flushPromises();
+
+    expect(mockApi.post).toHaveBeenCalledTimes(1);
+
+    await wrapper.get('[data-testid="ai-explain-button"]').trigger('click');
+    await wrapper.get('textarea').setValue('  为什么推荐？  ');
+    await wrapper.get('[data-testid="ai-submit-button"]').trigger('click');
+    await flushPromises();
+
+    expect(mockApi.post).toHaveBeenLastCalledWith('/ai/ask', {
+      context_type: 'perennial_plan',
+      question: '为什么推荐？',
+      crop_id: 'crop-blueberry',
+      selected_container_type_id: 'ct-fabric-bag',
+      selected_variety_id: 'var-oneal',
+    });
+  });
 });

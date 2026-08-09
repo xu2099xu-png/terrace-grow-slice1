@@ -30,6 +30,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -61,7 +63,10 @@ jobs:
       - name: Full isolated test gate
         run: npm run test:all
 
-      - name: Slice 2 frozen database upgrade gate
+      - name: Slice 5 AI gate
+        run: npm run test:slice5-gate
+
+      - name: Migration upgrade gate
         run: npm run test:migration-upgrade
 
       - name: Production build

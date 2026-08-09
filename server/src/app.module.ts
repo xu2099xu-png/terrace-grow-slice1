@@ -17,6 +17,7 @@ import { RuntimeConfigModule } from './config/runtime-config.module';
 import { AppConfigService } from './config/runtime-config';
 import { HealthModule } from './health/health.module';
 import { clientIpTracker } from './rate-limit/client-tracker';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { clientIpTracker } from './rate-limit/client-tracker';
     SeasonsModule,
     LocationModule,
     HealthModule,
+    AiModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

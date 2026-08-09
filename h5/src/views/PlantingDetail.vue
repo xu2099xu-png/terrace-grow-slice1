@@ -20,6 +20,15 @@
         <van-cell title="进度" :value="progressLabel" />
       </van-cell-group>
 
+      <div class="explain-action">
+        <AiExplanationPanel
+          context-type="planting_now"
+          :planting-id="props.id"
+          default-question="为什么现在要做这些操作？"
+          button-text="解释当前操作"
+        />
+      </div>
+
       <!-- 现在要做什么 -->
       <van-cell-group inset title="现在要做什么">
         <template v-if="now.current_stage">
@@ -64,6 +73,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import api from '../api/client';
+import AiExplanationPanel from '../components/AiExplanationPanel.vue';
 
 interface NowResponse {
   planting_id: string;
@@ -178,5 +188,10 @@ onMounted(load);
 .loading, .error {
   text-align: center;
   padding-top: 120px;
+}
+.explain-action {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 16px 12px;
 }
 </style>

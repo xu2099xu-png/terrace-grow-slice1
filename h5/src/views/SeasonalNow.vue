@@ -44,6 +44,15 @@
             <span class="label">关键风险</span>
             <span class="value risk">{{ item.warnings.join('；') }}</span>
           </div>
+          <div class="explain-row" @click.stop>
+            <AiExplanationPanel
+              context-type="seasonal_item"
+              :city-code="cityCode"
+              :crop-id="item.crop_id"
+              default-question="为什么现在适合种这个？"
+              button-text="解释推荐"
+            />
+          </div>
         </div>
       </template>
       <van-empty v-else description="当前没有可种的作物" />
@@ -52,9 +61,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import api from '../api/client';
+import AiExplanationPanel from '../components/AiExplanationPanel.vue';
 
 interface SeasonalItem {
   crop_id: string;
@@ -76,6 +86,7 @@ const route = useRoute();
 const loading = ref(true);
 const error = ref('');
 const result = ref<SeasonalResult | null>(null);
+const cityCode = computed(() => String(route.query.city_code || ''));
 
 // closure-6: keep the city context when opening the crop detail so the detail
 // page only shows the current climate zone's sowing windows.
@@ -83,7 +94,7 @@ function goDetail(item: SeasonalItem) {
   const query: Record<string, string> = {
     start_methods: item.available_start_methods.join(','),
   };
-  if (route.query.city_code) query.city_code = String(route.query.city_code);
+  if (cityCode.value) query.city_code = cityCode.value;
   router.push({
     path: `/crops/${item.crop_id}`,
     query,
@@ -113,12 +124,11 @@ async function load() {
   loading.value = true;
   error.value = '';
   try {
-    const cityCode = String(route.query.city_code || '');
-    if (!cityCode) {
+    if (!cityCode.value) {
       error.value = '缺少城市信息';
       return;
     }
-    const res = await api.get(`/seasons/now?city_code=${cityCode}`);
+    const res = await api.get(`/seasons/now?city_code=${cityCode.value}`);
     result.value = res.data;
   } catch (e: any) {
     error.value = e.response?.data?.message || '加载失败';
@@ -172,4 +182,9 @@ onMounted(load);
 .card-row .label { color: #999; }
 .card-row .value.start-method { color: #07c160; font-weight: 600; }
 .card-row .value.risk { color: #ee0a24; text-align: right; }
+.explain-row {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
 </style>

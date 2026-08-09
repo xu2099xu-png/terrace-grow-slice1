@@ -16,6 +16,10 @@ export ALLOW_DRAFT_FIXTURES=true
 #    asserts graceful degradation ("暂未结合近期天气") while recommendations exist
 export LOCATION_RESOLVER=mock
 export SEASON_DATE=2026-03-20
+export AI_PROVIDER=mock
+
+echo "[browser-e2e] building server..."
+(cd "$ROOT/server" && npm run build >/dev/null)
 
 echo "[browser-e2e] building h5..."
 (cd "$ROOT/h5" && npm run build >/dev/null)
