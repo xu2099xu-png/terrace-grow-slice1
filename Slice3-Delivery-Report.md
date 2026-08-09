@@ -318,8 +318,8 @@ npm run test:all         EXIT=0
 ### 10.6 状态与 commit
 
 本节是供独立审查的 closure candidate，不自行宣告 Slice 3 PASS/FROZEN。
-代码候选 commit SHA 将在提交后单独 pin。只有独立终审通过后，该 SHA 才能成为
-Slice 4 的 frozen baseline。
+代码候选 commit SHA：**`85a25b40de7d119fd12accb5f550098743352888`**。
+只有独立终审通过后，该 SHA 才能成为 Slice 4 的 frozen baseline。
 | - | 缺 city_code 的 date 用 UTC | 复用 `toShanghaiDateString()` | gate「missing city_code → Asia/Shanghai date」 |
 
 测试结果（closure 后）：
