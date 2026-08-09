@@ -330,3 +330,60 @@ server/h5 build    EXIT=0
 ```
 
 Closure commit SHA：见最终 main HEAD（提交信息前缀 `Slice 3: closure — real provider contracts + hard filters`）。
+
+---
+
+## 11. Final-final contract closure candidate（2026-08-09）
+
+独立终审将上一候选 `85a25b40de7d119fd12accb5f550098743352888`
+判定为 FAIL。本节取代 10.6 的候选状态；旧节仅保留为历史交付记录。本轮严格限定在
+终审列出的 WeatherProvider 契约和 Gate 证据缺口，未开始 Slice 4，也未修改农业推荐
+语义、Prisma schema、历史 migration、seed 或 H5。
+
+### 11.1 阻断项闭合
+
+| # | 阻断项 | 实现/测试闭合 | 精确自动化证据 |
+|---|---|---|---|
+| 1 | QWeather 仍使用 v7 endpoint 和旧 `daily[]` schema | adapter 改为 Daily Forecast v1：`/weather/v1/daily/{latitude}/{longitude}`，解析 `days[].forecastStartTime`、`temperatureMin.value`、`temperatureMax.value`；继续使用专属 Host 和 `X-QW-Api-Key` | `QWeather Daily Forecast v1 parses temperature facts but keeps frost unknown`; `QWeather v1 uses forecastStartTime and never fabricates missing calendar days` |
+| 2 | 用最低温度推导 frost boolean | 删除 temperature → frost 推导；QWeather 没有明确 frost fact，三个 forecast day 均返回 `frostRisk='unknown'` | v1 parser fixture 包含 `temperatureMin=-1`，仍断言全部 frost unknown；缺失 temperatureMin 同样保持 unknown |
+| 3 | deterministic Gate 实际只有一个 eligible candidate | 构造三个同时 eligible 且 score 相同的候选，以三种输入顺序重复执行 | `equal-score eligible crops use difficulty then crop_id across input orders` 同时断言 score 相同、`difficulty ASC`、`crop_id ASC`、rank `[1,2,3]` |
+| 4 | 播种窗口边界矩阵不完整 | 普通窗口与跨年窗口均固定 first/last/before/after；跨年另含窗口内日期 | `ordinary window fixes first/last/before/after boundaries`; `year-crossing window fixes first/last/before/after boundaries` |
+| 5 | production governance 未隔离证明 approved Crop + draft SowingCalendar | 测试中仅将 carrot Crop 临时设为 approved，确认 production catalog 可见该 Crop，但 recommendation 不读取其 draft calendars，finally 恢复 fixture | `production: approved Crop cannot use a draft SowingCalendar` |
+
+### 11.2 Red → Green 证据
+
+先将三个 QWeather fixture 改为 v1 真实结构并冻结新 URL/frost 契约，旧 adapter 下
+`slice3-gate` 出现 3 个确定失败，其余 40 项通过；随后修改 adapter，Gate 达到 43/43。
+
+### 11.3 实际验证结果
+
+```text
+Fresh DB migrate deploy    PASS（4 个历史 migration 从空库部署）
+server build               EXIT=0
+h5 build                   EXIT=0
+test:slice3-gate           43 passed
+test:unit                  33 passed
+test:integration           88 passed
+  slice3-gate              43 passed
+  plantings                11 passed
+  integration              16 passed
+  governance               10 passed
+  slice2-gate               8 passed
+API full-chain E2E         PASS
+h5 component                2 passed
+Playwright Chromium         4 passed
+npm run test:all           EXIT=0
+npm run build              EXIT=0
+```
+
+本轮没有 schema/migration 变更；10.5 的 Slice 2 frozen DB → current migration gate
+仍适用于同一组 4 个 migration，且 Fresh DB 已在本轮完整复跑。
+
+### 11.4 状态与唯一代码候选
+
+本节不自行宣告 Slice 3 PASS/FROZEN。供下一轮独立源码审计的唯一代码候选为：
+
+**`394ea65782f00a1589429dd0adadfc107657f86d`**
+
+只有该 SHA 独立终审通过后，才能签署 Slice 3 PASS/FROZEN，并将其作为 Slice 4
+Acceptance Criteria v1.1 的 baseline。
