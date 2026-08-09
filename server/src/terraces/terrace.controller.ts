@@ -4,6 +4,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { estimateSunlightFromRules } from '../engines/recommend-engine/sunlight';
 import { ClimateZone, SunEstimateRule, SunLevelMap } from '@prisma/client';
+import { UpsertTerraceDto } from './dto/upsert-terrace.dto';
 
 function levelFromDirect(sunExposureLevel: string, levelMap: SunLevelMap[]): { hoursMin: number; hoursMax: number; confidence: string } | null {
   const row = levelMap.find((l) => l.level === sunExposureLevel);
@@ -23,23 +24,8 @@ export class TerraceController {
   @Post()
   async upsert(
     @CurrentUser() userId: string,
-    @Body() body: {
-      name?: string;
-      cityCode: string;
-      sunExposureLevel?: string;
-      sunOrientationRaw?: string;
-      sunTimeObsRaw?: string;
-      orientation?: string;
-      rainExposed: boolean;
-    },
+    @Body() body: UpsertTerraceDto,
   ) {
-    // rainExposed is a required field at the API boundary: a missing value
-    // must not be silently interpreted as "no rain". Old clients / future
-    // miniprogram callers get a 400 instead of a polluted water-risk result.
-    if (typeof body.rainExposed !== 'boolean') {
-      throw new BadRequestException('rainExposed is required (boolean)');
-    }
-
     const levelMap = await this.prisma.sunLevelMap.findMany();
     const rules = await this.prisma.sunEstimateRule.findMany();
     const zones = await this.prisma.climateZone.findMany();

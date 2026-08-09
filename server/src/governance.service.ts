@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import { AppConfigService } from './config/runtime-config';
 
 /**
  * Unified governance filter for agricultural data tables.
@@ -7,13 +8,16 @@ import { PrismaService } from './prisma.service';
  */
 @Injectable()
 export class GovernanceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: AppConfigService,
+  ) {}
 
   /** Check if draft fixtures are allowed in current environment. */
   private allowDraft(): boolean {
     return (
-      process.env.APP_ENV === 'development' &&
-      process.env.ALLOW_DRAFT_FIXTURES === 'true'
+      this.config.value.appEnv === 'development' &&
+      this.config.value.allowDraftFixtures
     );
   }
 

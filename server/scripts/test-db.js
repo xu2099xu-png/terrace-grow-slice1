@@ -20,10 +20,11 @@ const path = require('node:path');
 const SERVER_DIR = path.resolve(__dirname, '..');
 const TEST_DB_NAME = 'terrace_grow_test';
 // local docker postgres container (see docker-compose.yml / README)
-const PG_CONTAINER = 'terrace-grow-postgres';
+const PG_CONTAINER = process.env.TEST_POSTGRES_CONTAINER || 'terrace-grow-postgres';
 
 /** Read DATABASE_URL from .env, falling back to .env.example. */
 function readBaseUrl() {
+  if (process.env.TEST_DATABASE_ADMIN_URL) return process.env.TEST_DATABASE_ADMIN_URL;
   for (const file of ['.env', '.env.example']) {
     const p = path.join(SERVER_DIR, file);
     if (!fs.existsSync(p)) continue;

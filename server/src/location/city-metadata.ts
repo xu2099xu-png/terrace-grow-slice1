@@ -27,8 +27,9 @@ export const CITY_METADATA: Record<string, { name: string; lng: number; lat: num
 };
 
 /** Strip province/city/district suffixes to match canonical names. */
-export function normalizePlaceName(raw: string | undefined | null): string {
-  if (!raw) return '';
+export function normalizePlaceName(raw: unknown): string {
+  // AMap documents absent administrative fields as arrays rather than strings.
+  if (typeof raw !== 'string' || !raw) return '';
   return raw
     .replace(/[省市自治区特别行政区]+$/, '')
     .replace(/^(内蒙古|广西|西藏|宁夏|新疆)/, (m) => m)
@@ -37,7 +38,7 @@ export function normalizePlaceName(raw: string | undefined | null): string {
 
 /** Reverse lookup: a Chinese place name (北京/海淀区/杭州市) → canonical code. */
 export function findCityByPlaceName(
-  names: Array<string | undefined | null>,
+  names: unknown[],
 ): { city_code: string; city_name: string } | null {
   for (const raw of names) {
     const n = normalizePlaceName(raw);

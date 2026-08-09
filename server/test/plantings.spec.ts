@@ -4,6 +4,7 @@ import request from 'supertest';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma.service';
+import { configureApplication } from '../src/http/application';
 
 /**
  * Slice 2 Acceptance Tests — planting flow (S2-AC-02..07, 13..19).
@@ -18,8 +19,7 @@ describe('Slice 2 Plantings', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.enableCors({ origin: true, credentials: true });
+    configureApplication(app);
     await app.init();
     prisma = app.get(PrismaService);
 

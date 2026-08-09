@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CityResult, LocationResolver } from './location-resolver.interface';
 import { findCityByPlaceName } from './city-metadata';
+import { AppConfigService } from '../config/runtime-config';
 
 /**
  * Real HTTP reverse-geocode adapter (AMap 高德).
@@ -16,22 +17,24 @@ import { findCityByPlaceName } from './city-metadata';
 export class HttpLocationResolver implements LocationResolver {
   private readonly logger = new Logger(HttpLocationResolver.name);
 
+  constructor(private readonly config: AppConfigService) {}
+
   async resolveCity(lat: number, lng: number): Promise<CityResult | null> {
-    const key = process.env.LOCATION_API_KEY;
+    const key = this.config.value.locationApiKey;
     if (!key) {
       this.logger.warn('LOCATION_API_KEY not configured — location unavailable');
       return null;
     }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 3000);
       const url =
         'https://restapi.amap.com/v3/geocode/regeo?' +
         `location=${lng},${lat}&key=${key}`;
       const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timer);
       if (!res.ok) return null;
       const json: any = await res.json();
+      if (json?.status !== '1') return null;
       const comp = json?.regeocode?.addressComponent;
       if (!comp) return null;
       // Direct municipalities have empty `city`; province/district carry the name.
@@ -41,6 +44,8 @@ export class HttpLocationResolver implements LocationResolver {
     } catch (e) {
       this.logger.warn(`location resolve failed: ${(e as Error).message}`);
       return null;
+    } finally {
+      clearTimeout(timer);
     }
   }
 }

@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Post, Body, UseGuards } from '@nestjs/common';
 import { AgriDataService } from '../agri-data.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -6,6 +6,7 @@ import { calculateSoilMix } from '../engines/soil-engine';
 import { assessWaterRisk } from '../engines/recommend-engine/water-risk';
 import { recommendContainer } from '../engines/recommend-engine/container';
 import type { ContainerRequirementRow, ContainerTypeRow } from '../engines/recommend-engine/container';
+import { CalculateSoilDto } from './dto/calculate-soil.dto';
 
 @Controller('soil')
 @UseGuards(AuthGuard)
@@ -15,18 +16,13 @@ export class SoilController {
   @Post('calculate')
   async calculate(
     @CurrentUser() userId: string,
-    @Body() body: {
-      crop_id: string;
-      container_type_id: string;
-      selected_variety_id?: string | null;
-      material_ids?: string[];
-    },
+    @Body() body: CalculateSoilDto,
   ) {
     const { crop_id: cropId, container_type_id: containerTypeId } = body;
     const selectedVarietyId = body.selected_variety_id || null;
 
     const container = await this.agri.getContainerType(containerTypeId);
-    if (!container) return { error: 'Container not found' };
+    if (!container) throw new BadRequestException('Container not found');
 
     const modifiers = await this.agri.getContainerModifiers([container.id]);
     const template = await this.agri.getSoilRecipeTemplate(cropId, false);

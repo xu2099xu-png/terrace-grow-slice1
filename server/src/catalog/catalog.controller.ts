@@ -1,6 +1,8 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { AgriDataService } from '../agri-data.service';
 import { Public } from '../auth/public.decorator';
+import { ResourceIdParamsDto } from '../http/dto/shared.dto';
+import { CatalogQueryDto, CropDetailQueryDto } from './dto/catalog-query.dto';
 
 @Controller('crops')
 export class CatalogController {
@@ -8,25 +10,25 @@ export class CatalogController {
 
   @Public()
   @Get()
-  async list(@Query('life_type') lifeType?: string) {
-    return this.agri.listCrops(lifeType);
+  async list(@Query() query: CatalogQueryDto) {
+    return this.agri.listCrops(query.life_type);
   }
 
   @Public()
   @Get(':id')
-  async detail(@Param('id') id: string, @Query('city_code') cityCode?: string) {
+  async detail(@Param() params: ResourceIdParamsDto, @Query() query: CropDetailQueryDto) {
     let zoneCode: string | undefined;
-    if (cityCode) {
-      const zone = await this.agri.getClimateZoneByCity(cityCode);
+    if (query.city_code) {
+      const zone = await this.agri.getClimateZoneByCity(query.city_code);
       zoneCode = zone?.code;
     }
-    return this.agri.getCropDetail(id, zoneCode);
+    return this.agri.getCropDetail(params.id, zoneCode);
   }
 
   @Public()
   @Get(':id/varieties')
-  async varieties(@Param('id') cropId: string) {
-    const rows = await this.agri.listVarieties(cropId);
+  async varieties(@Param() params: ResourceIdParamsDto) {
+    const rows = await this.agri.listVarieties(params.id);
     return rows.map((v) => ({
       id: v.id,
       name: v.name,

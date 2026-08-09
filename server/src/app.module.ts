@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from './prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { TerraceModule } from './terraces/terrace.module';
@@ -12,12 +13,33 @@ import { PlantingsModule } from './plantings/plantings.module';
 import { SeasonsModule } from './seasons/seasons.module';
 import { LocationModule } from './location/location.module';
 import { AuthGuard } from './auth/auth.guard';
+import { RuntimeConfigModule } from './config/runtime-config.module';
+import { AppConfigService } from './config/runtime-config';
+import { HealthModule } from './health/health.module';
+import { clientIpTracker } from './rate-limit/client-tracker';
 
 @Module({
   imports: [
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'dev-secret',
-      signOptions: { expiresIn: '365d' },
+    RuntimeConfigModule,
+    JwtModule.registerAsync({
+      global: true,
+      imports: [RuntimeConfigModule],
+      inject: [AppConfigService],
+      useFactory: (config: AppConfigService) => ({
+        secret: config.value.jwtSecret,
+        signOptions: { expiresIn: config.value.jwtExpiresIn as any },
+      }),
+    }),
+    ThrottlerModule.forRootAsync({
+      imports: [RuntimeConfigModule],
+      inject: [AppConfigService],
+      useFactory: (config: AppConfigService) => ({
+        getTracker: clientIpTracker,
+        throttlers: [{
+          ttl: config.value.rateLimitTtlMs,
+          limit: config.value.rateLimitGlobalLimit,
+        }],
+      }),
     }),
     PrismaModule,
     AuthModule,
@@ -29,8 +51,10 @@ import { AuthGuard } from './auth/auth.guard';
     PlantingsModule,
     SeasonsModule,
     LocationModule,
+    HealthModule,
   ],
   providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useExisting: AuthGuard },
   ],
 })

@@ -1,6 +1,7 @@
 # Slice 3 Delivery Report — 「这个季节种什么」
 
 > 报告日期：2026-08-09
+> 当前状态：PASS / FROZEN
 > 验收基线：`Slice3-Acceptance-Criteria-v1.0.md`（v1.1 FROZEN）
 > Slice 1 = CLOSED / ACCEPTED；Slice 2 = PASS / FROZEN（基线 `5affe3a2`）
 > 工作流：AC Freeze → 测试骨架 → 红测 → Coding → Slice Gate → 浏览器 E2E → Clean-room → Delivery Report
@@ -243,6 +244,82 @@ Seasonal 复用 assessSunlight()，无季节性日照自创算法
 | 4 | supported-cities `city_name` 返回 code（beijing/beijing） | 新增服务端 `CITY_METADATA`（code→中文名+坐标），`listSupportedCities` 用中文名 | gate「beijing → 北京」 |
 | 5 | SeasonsService 伪造环境（默认 6h/false） | 默认全部 `null`；无可靠 minSunHours → 不运行 sunlight；无 temp/frost → 不执行对应 filter | gate「null env facts → neutral, no fake 6h/false」 |
 | 6 | Crop Detail 展示所有气候区窗口 | `GET /crops/:id?city_code=` 按 climate zone 过滤；SeasonalNow 跳转带 city_code；无 city context 不写"本气候区" | gate「crop detail + beijing → 仅 north_china calendars」 |
+
+## 10. Final contract closure candidate（独立终审反馈）
+
+独立终审确认 `d7b2d8a` 仍有 Slice 3 阻断项，因此该 SHA 不再视为
+Slice 3 PASS/FROZEN 基线。本轮只修复 Slice 3 已冻结的天气、Provider、定位和
+H5 契约，不包含任何 Slice 4 生产基础设施实现。
+
+### 10.1 阻断项修复
+
+| # | 审计问题 | 修复 | 精确自动化证据 |
+|---|---|---|---|
+| 1 | 顶层 `weather_data_status=partial` 会同时禁用温度与霜冻 hard filter | `aggregateWeather` 分别输出 `temperatureComplete` / `frostComplete`；温度和霜冻只依赖各自三日事实，顶层 partial 不再屏蔽已确定事实 | `complete temperature still hard-filters when frost facts are partial`; `complete frost facts still hard-filter when temperature facts are partial` |
+| 2 | 部分霜冻数据中出现 `true` 会覆盖同窗口的 unknown | 只有三个不同本地日历日全部提供明确 boolean 时才聚合 frost；任一 unknown/缺失均为 `unknown` | `any unknown frost day makes aggregate frostRisk unknown`; `duplicate calendar days do not count as complete three-day weather` |
+| 3 | 任意 WeatherProvider throw/永久 pending 可导致 API 500/挂起 | Provider 边界新增 `fetchWeatherSafely`，同步 throw、异步 reject、非法返回和超时统一降级为 `[]` | API gate `provider throw degrades to unavailable without a 500`; `provider timeout degrades to unavailable without hanging the endpoint`; `provider partial fields remain partial` |
+| 4 | QWeather 使用将逐步停用的公共 Host、把 key 放 URL、忽略 `fxDate` 并按数组下标伪造日期 | 改用 `QWEATHER_API_HOST` 专属 Host + `X-QW-Api-Key`；只接收响应中明确属于 today/today+1/today+2 的 `fxDate`，缺日不补造 | adapter gate `QWeather string temp response...`; `QWeather uses fxDate and never fabricates missing calendar days` |
+| 5 | 高德直辖市缺失 `city` 的真实 payload 可能是 `[]`，字符串方法会抛错并错误降级 | 行政字段按 `unknown` 输入解析，非字符串安全跳过；同时校验 provider `status='1'`，timeout timer 在 finally 清理 | adapter gate `AMap 北京/海淀区 shape...` 使用 `city: []`；杭州非直辖市回归 |
+| 6 | 季节卡的当前 `available_start_methods` 在 Crop Detail 丢失，`either` 作物可能从“建议直播”变回“均可” | SeasonalNow 跳转携带 `start_methods` 上下文；CropDetail 优先展示当前推荐上下文，城市过滤仍保留 | Playwright `S3-E2E-01`：生菜只有 direct_seed 命中，卡片与详情均断言“建议直播” |
+
+### 10.2 Weather partial 语义（最终实现矩阵）
+
+| 三日温度事实 | 三日 frost 事实 | 顶层状态 | 温度 filter | frost filter |
+|---|---|---|---|---|
+| 3 日完整 | 3 日明确 boolean | available | 可执行 | 可执行 |
+| 3 日完整 | 任一 unknown/缺失 | partial | 可执行 | 禁用 |
+| 1–2 日 | 3 日明确 boolean | partial | 禁用 | 可执行 |
+| 1–2 日 | 任一 unknown/缺失 | partial | 禁用 | 禁用 |
+| 0 日 | 任意 | unavailable | 禁用 | 禁用 |
+
+`weather_assessment` 仍与顶层质量状态分离。只有某项事实自身完整时才允许它触发
+hard filter；未被过滤但仍缺少作物判断所需事实的 item 返回 `unknown`。
+
+### 10.3 Provider contract
+
+- QWeather API Host 必须通过 `QWEATHER_API_HOST` 提供，格式为控制台分配的
+  hostname（例如 `abc.qweatherapi.com`）。
+- API key 通过 `X-QW-Api-Key` 请求头发送，不写入 URL 或日志。
+- QWeather v7 `daily[].fxDate/tempMin/tempMax` 是 adapter 输入；对外引擎仍只依赖
+  `DailyWeather { date, tempMinC?, tempMaxC?, frostRisk? }`。
+- Provider 边界默认 3500ms 降级；测试通过 `WEATHER_PROVIDER_TIMEOUT_MS` 使用短窗口
+  确定性覆盖永久 pending 场景。
+
+### 10.4 实际验证结果
+
+本轮在同一工作树实际执行：
+
+```text
+server build             EXIT=0
+h5 build                 EXIT=0
+test:slice3-gate         41 passed
+test:unit                33 passed
+test:integration         86 passed
+  slice3-gate            41 passed
+  plantings              11 passed
+  integration            16 passed
+  governance             10 passed
+  slice2-gate             8 passed
+API full-chain E2E       PASS
+h5 component              2 passed
+Playwright Chromium       4 passed
+npm run test:all         EXIT=0
+```
+
+### 10.5 Migration gate
+
+- Fresh test DB：4 个历史 migration 从空库依次部署，PASS。
+- Slice 2 frozen DB → current：先仅部署前三个 migration，写入代表性 User 和
+  TerraceProfile，再运行当前 `prisma migrate deploy`。
+- 结果：User=`1`、TerraceProfile=`1` 均保留；SowingCalendar 表=`1`；已完成
+  migration=`4`。PASS。
+- 本轮未修改 Prisma schema、历史 migration 或 seed 农业事实。
+
+### 10.6 状态与 commit
+
+本节是供独立审查的 closure candidate，不自行宣告 Slice 3 PASS/FROZEN。
+代码候选 commit SHA：**`85a25b40de7d119fd12accb5f550098743352888`**。
+只有独立终审通过后，该 SHA 才能成为 Slice 4 的 frozen baseline。
 | - | 缺 city_code 的 date 用 UTC | 复用 `toShanghaiDateString()` | gate「missing city_code → Asia/Shanghai date」 |
 
 测试结果（closure 后）：
@@ -253,3 +330,82 @@ server/h5 build    EXIT=0
 ```
 
 Closure commit SHA：见最终 main HEAD（提交信息前缀 `Slice 3: closure — real provider contracts + hard filters`）。
+
+---
+
+## 11. Final-final contract closure candidate（2026-08-09）
+
+独立终审将上一候选 `85a25b40de7d119fd12accb5f550098743352888`
+判定为 FAIL。本节取代 10.6 的候选状态；旧节仅保留为历史交付记录。本轮严格限定在
+终审列出的 WeatherProvider 契约和 Gate 证据缺口，未开始 Slice 4，也未修改农业推荐
+语义、Prisma schema、历史 migration、seed 或 H5。
+
+### 11.1 阻断项闭合
+
+| # | 阻断项 | 实现/测试闭合 | 精确自动化证据 |
+|---|---|---|---|
+| 1 | QWeather 仍使用 v7 endpoint 和旧 `daily[]` schema | adapter 改为 Daily Forecast v1：`/weather/v1/daily/{latitude}/{longitude}`，解析 `days[].forecastStartTime`、`temperatureMin.value`、`temperatureMax.value`；继续使用专属 Host 和 `X-QW-Api-Key` | `QWeather Daily Forecast v1 parses temperature facts but keeps frost unknown`; `QWeather v1 uses forecastStartTime and never fabricates missing calendar days` |
+| 2 | 用最低温度推导 frost boolean | 删除 temperature → frost 推导；QWeather 没有明确 frost fact，三个 forecast day 均返回 `frostRisk='unknown'` | v1 parser fixture 包含 `temperatureMin=-1`，仍断言全部 frost unknown；缺失 temperatureMin 同样保持 unknown |
+| 3 | deterministic Gate 实际只有一个 eligible candidate | 构造三个同时 eligible 且 score 相同的候选，以三种输入顺序重复执行 | `equal-score eligible crops use difficulty then crop_id across input orders` 同时断言 score 相同、`difficulty ASC`、`crop_id ASC`、rank `[1,2,3]` |
+| 4 | 播种窗口边界矩阵不完整 | 普通窗口与跨年窗口均固定 first/last/before/after；跨年另含窗口内日期 | `ordinary window fixes first/last/before/after boundaries`; `year-crossing window fixes first/last/before/after boundaries` |
+| 5 | production governance 未隔离证明 approved Crop + draft SowingCalendar | 测试中仅将 carrot Crop 临时设为 approved，确认 production catalog 可见该 Crop，但 recommendation 不读取其 draft calendars，finally 恢复 fixture | `production: approved Crop cannot use a draft SowingCalendar` |
+
+### 11.2 Red → Green 证据
+
+先将三个 QWeather fixture 改为 v1 真实结构并冻结新 URL/frost 契约，旧 adapter 下
+`slice3-gate` 出现 3 个确定失败，其余 40 项通过；随后修改 adapter，Gate 达到 43/43。
+
+### 11.3 实际验证结果
+
+```text
+Fresh DB migrate deploy    PASS（4 个历史 migration 从空库部署）
+server build               EXIT=0
+h5 build                   EXIT=0
+test:slice3-gate           43 passed
+test:unit                  33 passed
+test:integration           88 passed
+  slice3-gate              43 passed
+  plantings                11 passed
+  integration              16 passed
+  governance               10 passed
+  slice2-gate               8 passed
+API full-chain E2E         PASS
+h5 component                2 passed
+Playwright Chromium         4 passed
+npm run test:all           EXIT=0
+npm run build              EXIT=0
+```
+
+本轮没有 schema/migration 变更；10.5 的 Slice 2 frozen DB → current migration gate
+仍适用于同一组 4 个 migration，且 Fresh DB 已在本轮完整复跑。
+
+### 11.4 状态与唯一代码候选
+
+本节不自行宣告 Slice 3 PASS/FROZEN。供下一轮独立源码审计的唯一代码候选为：
+
+**`394ea65782f00a1589429dd0adadfc107657f86d`**
+
+只有该 SHA 独立终审通过后，才能签署 Slice 3 PASS/FROZEN，并将其作为 Slice 4
+Acceptance Criteria v1.1 的 baseline。
+
+---
+
+## 12. Independent freeze decision（2026-08-09）
+
+唯一代码候选 `394ea65782f00a1589429dd0adadfc107657f86d` 已完成独立源码级终审：
+
+```text
+Blocking: 0
+Decision: PASS
+Slice 3: PASS / FROZEN
+```
+
+终审确认 QWeather Daily Forecast v1/frost unknown、真实多候选同分排序、普通与跨年
+窗口边界矩阵，以及 approved Crop + draft SowingCalendar production 隔离均已闭合。
+
+Slice 3 冻结代码 commit：
+
+**`394ea65782f00a1589429dd0adadfc107657f86d`**
+
+后续报告或 Slice 4 文档提交不得替代该代码 baseline，也不得把 Slice 4 修改回写到该
+冻结 commit 的契约范围。

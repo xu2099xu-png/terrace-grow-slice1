@@ -4,6 +4,7 @@ import request from 'supertest';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma.service';
+import { configureApplication } from '../src/http/application';
 
 describe('Slice 1 Integration', () => {
   let app: INestApplication;
@@ -16,8 +17,7 @@ describe('Slice 1 Integration', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.enableCors({ origin: true, credentials: true });
+    configureApplication(app);
     await app.init();
     prisma = app.get(PrismaService);
   });
@@ -63,7 +63,12 @@ describe('Slice 1 Integration', () => {
         sunExposureLevel: 'LONG',
       })
       .expect(400);
-    expect(res.body.message).toContain('rainExposed');
+    expect(res.body).toMatchObject({
+      statusCode: 400,
+      code: 'VALIDATION_ERROR',
+      message: 'Invalid request',
+    });
+    expect(res.body.errors.some((error: any) => error.path === 'rainExposed')).toBe(true);
   });
 
   it('3. get terrace profile', async () => {

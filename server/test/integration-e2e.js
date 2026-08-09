@@ -9,12 +9,12 @@ process.env.DATABASE_URL =
 const { Test } = require('@nestjs/testing');
 const request = require('supertest');
 const { AppModule } = require('../dist/src/app.module');
+const { configureApplication } = require('../dist/src/http/application');
 
 async function run() {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication();
-  app.setGlobalPrefix('api');
-  app.enableCors({ origin: true, credentials: true });
+  configureApplication(app);
   await app.init();
 
   // 1. anonymous auth
@@ -49,7 +49,9 @@ async function run() {
       sunExposureLevel: 'LONG',
     })
     .expect(400);
-  if (!String(res.body.message).includes('rainExposed')) throw new Error('expected rainExposed error message');
+  if (!res.body.errors?.some(error => error.path === 'rainExposed')) {
+    throw new Error('expected rainExposed validation error');
+  }
 
   // 3. get terrace profile
   res = await request(app.getHttpServer())

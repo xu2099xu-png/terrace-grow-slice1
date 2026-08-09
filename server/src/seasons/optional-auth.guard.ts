@@ -1,5 +1,5 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { AuthService } from '../auth/auth.service';
 
 /**
  * Optional auth (AC-12): ALWAYS allows the request. If a valid Bearer token is
@@ -8,22 +8,20 @@ import { JwtService } from '@nestjs/jwt';
  */
 @Injectable()
 export class OptionalAuthGuard implements CanActivate {
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(private readonly authService: AuthService) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
-    const header: string = req.headers['authorization'] || '';
-    const token = header.replace(/^Bearer\s+/, '');
-    if (!token) {
+    const header = req.headers['authorization'];
+    if (header === undefined) {
       req.userId = null;
       return true;
     }
-    try {
-      const payload = this.jwtService.verify(token);
-      req.userId = payload.sub ?? null;
-    } catch {
-      req.userId = null;
-    }
+    if (typeof header !== 'string') throw new UnauthorizedException('Invalid authorization header');
+    const match = /^Bearer\s+(.+)$/.exec(header);
+    if (!match) throw new UnauthorizedException('Invalid authorization header');
+    const payload = await this.authService.verifyActive(match[1]);
+    req.userId = payload.sub;
     return true;
   }
 }

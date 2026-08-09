@@ -53,6 +53,14 @@ const loading = ref(true);
 const error = ref('');
 const crop = ref<any>(null);
 const hasCityContext = computed(() => !!route.query.city_code);
+const contextualStartMethods = computed(() => {
+  const queryValue = route.query.start_methods;
+  const raw = Array.isArray(queryValue) ? queryValue[0] : queryValue;
+  if (typeof raw !== 'string') return [];
+  return raw
+    .split(',')
+    .filter((method) => method === 'direct_seed' || method === 'nursery_plant');
+});
 
 const calendarTitle = computed(() =>
   hasCityContext.value ? '播种窗口（本气候区）' : '播种窗口',
@@ -63,6 +71,13 @@ const difficultyLabel = computed(() => {
   return { 1: '新手友好', 2: '有点难度', 3: '较有挑战', 4: '有难度', 5: '高手向' }[d] || `难度${d}`;
 });
 const startMethodLabel = computed(() => {
+  if (contextualStartMethods.value.length > 0) {
+    const hasSeed = contextualStartMethods.value.includes('direct_seed');
+    const hasNursery = contextualStartMethods.value.includes('nursery_plant');
+    if (hasSeed && hasNursery) return '买苗 / 直播均可';
+    if (hasSeed) return '建议直播';
+    return '建议买苗';
+  }
   const m = crop.value?.recommendedStartMethod;
   return { nursery_plant: '建议买苗', direct_seed: '建议直播', either: '买苗 / 直播均可' }[m] || m || '—';
 });

@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-build-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: terrace
+          POSTGRES_PASSWORD: terrace
+          POSTGRES_DB: terrace_grow
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U terrace -d terrace_grow"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 30
+
+    env:
+      TEST_DATABASE_ADMIN_URL: postgresql://terrace:terrace@localhost:5433/terrace_grow?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+            h5/package-lock.json
+
+      - name: Install all lockfile dependency sets
+        run: |
+          npm ci
+          npm --prefix server ci
+          npm --prefix h5 ci
+
+      - name: Install pinned Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Audit production API dependencies
+        run: npm --prefix server audit --omit=dev
+
+      - name: Locate isolated PostgreSQL service container
+        run: |
+          container_id="$(docker ps --filter ancestor=postgres:16-alpine --format '{{.ID}}' | head -n 1)"
+          test -n "$container_id"
+          echo "TEST_POSTGRES_CONTAINER=$container_id" >> "$GITHUB_ENV"
+
+      - name: Full isolated test gate
+        run: npm run test:all
+
+      - name: Slice 2 frozen database upgrade gate
+        run: npm run test:migration-upgrade
+
+      - name: Production build
+        run: npm run build
+
+      - name: Validate production Compose
+        env:
+          POSTGRES_USER: terrace_prod_test
+          POSTGRES_PASSWORD: slice4-db-password
+          POSTGRES_DB: terrace_prod_test
+          DATABASE_URL: postgresql://terrace_prod_test:slice4-db-password@postgres:5432/terrace_prod_test?schema=public
+          JWT_SECRET: slice4-container-smoke-jwt-secret-value-0001
+          CORS_ORIGINS: http://127.0.0.1:18080
+          H5_PORT: 18080
+        run: npm run compose:production:config
+
+      - name: Build production images
+        env:
+          POSTGRES_USER: terrace_prod_test
+          POSTGRES_PASSWORD: slice4-db-password
+          POSTGRES_DB: terrace_prod_test
+          DATABASE_URL: postgresql://terrace_prod_test:slice4-db-password@postgres:5432/terrace_prod_test?schema=public
+          JWT_SECRET: slice4-container-smoke-jwt-secret-value-0001
+          CORS_ORIGINS: http://127.0.0.1:18080
+          H5_PORT: 18080
+          SMOKE_PROJECT_NAME: terrace_s4_ci
+        run: docker compose --project-name "$SMOKE_PROJECT_NAME" -f docker-compose.production.yml build server h5
+
+      - name: Isolated production container smoke
+        env:
+          H5_PORT: 18080
+          SMOKE_PROJECT_NAME: terrace_s4_ci
+          SKIP_BUILD: 1
+        run: npm run test:production-smoke

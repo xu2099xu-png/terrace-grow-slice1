@@ -15,7 +15,7 @@ export ALLOW_DRAFT_FIXTURES=true
 #  - WEATHER_PROVIDER left as http (no key → unavailable) → Golden Path B
 #    asserts graceful degradation ("暂未结合近期天气") while recommendations exist
 export LOCATION_RESOLVER=mock
-export SEASON_DATE=2026-04-10
+export SEASON_DATE=2026-03-20
 
 echo "[browser-e2e] building h5..."
 (cd "$ROOT/h5" && npm run build >/dev/null)

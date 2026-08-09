@@ -1,0 +1,71 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      PORT: "3000"
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-365d}
+      CORS_ORIGINS: ${CORS_ORIGINS:?CORS_ORIGINS is required}
+      ALLOW_DRAFT_FIXTURES: "false"
+      LOCATION_RESOLVER: http
+      WEATHER_PROVIDER: http
+      LOCATION_API_KEY: ${LOCATION_API_KEY:-}
+      QWEATHER_API_HOST: ${QWEATHER_API_HOST:-}
+      QWEATHER_KEY: ${QWEATHER_KEY:-}
+      WEATHER_PROVIDER_TIMEOUT_MS: ${WEATHER_PROVIDER_TIMEOUT_MS:-3500}
+      RATE_LIMIT_GLOBAL_LIMIT: ${RATE_LIMIT_GLOBAL_LIMIT:-300}
+      RATE_LIMIT_TTL_MS: ${RATE_LIMIT_TTL_MS:-60000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "3000"
+
+  h5:
+    build:
+      context: ./h5
+      dockerfile: Dockerfile
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "${H5_PORT:-8080}:8080"
+
+  client-a:
+    image: curlimages/curl:8.12.1
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["sleep infinity"]
+    profiles: ["smoke"]
+    depends_on:
+      h5:
+        condition: service_healthy
+
+  client-b:
+    image: curlimages/curl:8.12.1
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["sleep infinity"]
+    profiles: ["smoke"]
+    depends_on:
+      h5:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

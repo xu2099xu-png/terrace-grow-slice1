@@ -4,10 +4,13 @@ import request from 'supertest';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma.service';
+import { configureApplication } from '../src/http/application';
+import { AppConfigService } from '../src/config/runtime-config';
+import { productionTestConfig } from './test-config';
 
 /**
  * Governance gate under production-like conditions:
- * APP_ENV=production + ALLOW_DRAFT_FIXTURES=true must NOT leak draft data —
+ * A valid APP_ENV=production configuration must NOT leak draft data —
  * neither draft parents nor draft nested relations (traits/attributes,
  * environment requirements, crop rules, container requirements).
  *
@@ -21,16 +24,13 @@ describe('Slice 1 Governance (production-like)', () => {
   let token: string;
 
   beforeAll(async () => {
-    process.env.APP_ENV = 'production';
-    process.env.ALLOW_DRAFT_FIXTURES = 'true';
-
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(AppConfigService)
+      .useValue(productionTestConfig())
+      .compile();
 
     app = moduleRef.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.enableCors({ origin: true, credentials: true });
+    configureApplication(app);
     await app.init();
     prisma = app.get(PrismaService);
 
