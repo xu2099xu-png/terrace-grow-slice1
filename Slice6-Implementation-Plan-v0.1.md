@@ -237,7 +237,8 @@ Authorization headers, or precise user coordinates. Catalog centroids may be use
 for lookup but should not be duplicated beyond the parsed cache fields unless the
 AC explicitly allows it. `attribution` is stored only after validation and must
 preserve the exact public attribution data used by H5, including QWeather
-`refer.sources` and weather-warning source names.
+`metadata.attributions[]`, any legacy warning `refer.sources[]`, and
+weather-warning source names.
 
 ### 4.5 Calendar Cache
 
@@ -291,39 +292,39 @@ values listed in S6-AC-18.
 Use repository-controlled structured data plus a manifest. Do not use raw SQL
 string hacks to construct or parse catalog data.
 
-Planned manifest fields:
+The administrative source manifest is frozen in AC section 0.1:
 
-```json
-{
-  "dataset_name": "string",
-  "source_owner": "string",
-  "source_url": "string",
-  "license_or_usage_basis": "string",
-  "snapshot_date": "YYYY-MM-DD",
-  "source_version": "string",
-  "import_date": "YYYY-MM-DD",
-  "data_version": "string",
-  "canonical_code_standard": "string",
-  "province_row_count": 0,
-  "city_prefecture_row_count": 0,
-  "district_county_row_count": 0,
-  "disabled_retired_row_count": 0,
-  "popular_city_count": 0,
-  "direct_mapping_count": 0,
-  "climate_anchor_count": 0,
-  "regions_sha256": "hex",
-  "popular_cities_sha256": "hex",
-  "direct_mappings_sha256": "hex",
-  "climate_anchors_sha256": "hex",
-  "aliases_supersessions_sha256": "hex",
-  "code_retirement_policy": "string"
-}
-```
+- dataset: `mca-national-geonames-admin-divisions-mainland-maxlevel3`,
+- source owner: `中华人民共和国民政部 / 中国-国家地名信息库`,
+- source URL:
+  `https://dmfw.mca.gov.cn/9095/xzqh/getList?code=&maxLevel=3`,
+- snapshot date: `2026-08-09`,
+- import date: `2026-08-09`,
+- canonical code standard: official 12-digit MCA administrative division code,
+- Slice 6 scope: Mainland China only; exclude Hong Kong SAR `810000000000` and
+  Macao SAR `820000000000` from enabled rows,
+- row counts: 31 province, 333 city/prefecture, 2847 district/county, 0
+  disabled/retired, 3211 total enabled rows,
+- raw source row counts before scope exclusion: 33 province, 333
+  city/prefecture, 2847 district/county,
+- raw source SHA-256:
+  `a880ff2c2fc76f7e15c42dcef9476bd353fd48a2ce3ea397140358211636700e`,
+- normalized mainland hierarchy SHA-256:
+  `4ef72188689412d5f1ee49fd28bd8cc228a0a942d2adad3d61d595f20e62b42d`,
+- initial alias/supersession SHA-256 for minified `[]`:
+  `4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`.
 
-Every manifest value above is an empty-to-fill Freeze gate. Any remaining `TBD`
-for source owner, source URL, license or usage basis, snapshot date/version,
-import date, canonical code standard, row counts, checksums, or code retirement
-policy blocks Slice 6 Freeze.
+Implementation must materialize the repository-controlled catalog files from
+that frozen source and must add delivery-time checksums for generated
+`regions.json`, `popular-cities.json`, climate mappings, anchors, and
+alias/supersession files. Those generated Slice 6 data files are product
+artifacts and must be included in the final Delivery Report; they must not alter
+the frozen upstream source row counts, canonical codes, or municipality
+hierarchy.
+
+Direct-controlled municipalities must keep the official province-level
+municipality code as the district parent. The importer, APIs, H5 picker, and
+legacy backfill must not generate or persist fake city-level municipality codes.
 
 Import approach:
 
@@ -454,13 +455,12 @@ Attribution rules:
 
 - HTTP QWeather responses use `name="和风天气/QWeather"` and
   `url="https://www.qweather.com"`.
-- QWeather `refer.sources` and weather-warning source names are passed through
-  completely and without rewriting in `attribution.sources`.
+- QWeather `metadata.attributions[]`, any legacy warning `refer.sources[]`, and
+  weather-warning source names are passed through completely and without
+  rewriting in `attribution.sources`.
 - Provider-contract fixtures must include exact provider fields needed by each
-  adapter as pinned in the Freeze-time provider-contract manifest. This plan must
-  not define new display current/warning JSON paths ahead of that manifest. It
-  only preserves the already frozen Daily Forecast v1 daily min/max paths. Public
-  responses must not leak extra raw provider data.
+  adapter as pinned in AC section 0.3. Public responses must not leak extra raw
+  provider data.
 - `off` and `mock` use contract-defined null/static attribution and must not
   pretend to be a real external provider.
 - Cache hits must render the same attribution as provider responses.
@@ -470,28 +470,36 @@ unexpired cache rows.
 
 ### 6.4 Weather Provider-Contract Manifest
 
-Before Freeze, add a provider-contract manifest for each pinned weather fixture
-family:
+The QWeather provider-contract manifest is frozen in AC section 0.3 for:
 
-- display current,
-- frozen Daily Forecast v1,
-- display warning.
+- display current: `GET /weather/v1/current/{latitude}/{longitude}`,
+  fixture SHA-256
+  `a08598d05202d955702043c04bdb1c1e1f323be03212a8ff30ba373c11752a72`,
+  parser `qweather-current-v1-display-parser@1`;
+- frozen Daily Forecast v1: `GET /weather/v1/daily/{latitude}/{longitude}`,
+  fixture SHA-256
+  `18fc5c7b9b5a5b5f5f888aeb4ed9ff3a7e227edba732c8d82ddc0403d5237552`,
+  parser `qweather-daily-v1-agri-display-parser@1`;
+- display warning: `GET /weatheralert/v1/current/{latitude}/{longitude}`,
+  fixture SHA-256
+  `873c534a42670c8a0154bbfa88aeae49c13152ab1b4f0843ac694779fc3c7e33`,
+  parser `qweather-weatheralert-v1-display-parser@1`.
 
-Each manifest entry must include exact official supported endpoint path and
-version, official documentation URL, documentation snapshot date, auth header and
-host, exact consumed JSON paths, attribution JSON paths, fixture checksum, and
-parser version.
+Implementation must consume the exact official endpoint paths, official
+documentation URLs, documentation snapshot date, `X-QW-Api-Key` auth header,
+dedicated QWeather API Host contract, `{latitude}/{longitude}` coordinate order,
+consumed JSON paths, attribution paths, fixture checksums, and parser versions
+from AC section 0.3.
 
-The Daily Forecast v1 entry must pin
+The Daily Forecast v1 entry pins
 `/weather/v1/daily/{latitude}/{longitude}`, dedicated host, `X-QW-Api-Key`,
 `days[].forecastStartTime`, `days[].temperatureMin.value`,
-`days[].temperatureMax.value`, and frost unknown. Any remaining `TBD` in these
-provider-contract manifest fields blocks Freeze.
+`days[].temperatureMax.value`, and frost unknown.
 
 The attribution gate remains mandatory for display current/warning and cache-hit
 paths. Moving daily forecast back to the frozen Slice 3 contract must not weaken
-visible QWeather name/link, ordered `refer.sources`, warning source names, cache
-equality, or off/mock non-impersonation assertions.
+visible QWeather name/link, ordered `metadata.attributions[]`, warning source
+names, cache equality, or off/mock non-impersonation assertions.
 
 ## 7. Nearest Proxy Algorithm
 
@@ -601,12 +609,12 @@ Runtime rules:
   `solar_term=null`.
 - No external network call is allowed.
 
-Implementation cannot start until the local library/table and
-`CALENDAR_ALGORITHM_VERSION` are pinned by manifest or frozen AC. The calendar
-manifest must record exact library/table name, version, checksum, provenance,
-and supported Gregorian date range. Golden vectors must include a normal day,
-lunar month boundary, Chinese New Year, solar-term instant crossing Asia/Shanghai
-local date, solar-term day, and non-solar-term day.
+The calendar algorithm is frozen in AC section 0.2 as
+`lunar-javascript@1.7.7`, algorithm version
+`terrace-calendar-lunar-javascript-1.7.7-asia-shanghai-v1`, supported
+Gregorian range `1900-01-31..2100-12-31` inclusive, and outside-range behavior
+`lunar.status=unavailable` plus `solar_term=null`. Golden vectors in AC section
+0.2 are mandatory implementation tests.
 
 Boundary rules:
 
@@ -881,8 +889,8 @@ The Slice 6 Delivery Report must include:
   exact consumed JSON paths, attribution JSON paths, fixture checksums, and
   parser versions,
 - weather attribution evidence against the referenced QWeather attribution page,
-  including QWeather name/link, complete ordered `refer.sources`, complete
-  warning source names, exact accessible `https://www.qweather.com` href,
+  including QWeather name/link, complete ordered `metadata.attributions[]`,
+  complete warning source names, exact accessible `https://www.qweather.com` href,
   off/mock attribution behavior, and cache-hit attribution preservation,
 - migration fresh/upgrade/idempotent evidence,
 - production smoke output,
