@@ -89,7 +89,7 @@ not allowed catalog sources.
   "supported_gregorian_range": {
     "inclusive_start": "1900-01-31",
     "inclusive_end": "2100-12-31",
-    "outside_range_behavior": "lunar.status=unavailable and solar_term=null"
+    "outside_range_behavior": "date and weekday remain populated from the Asia/Shanghai Gregorian civil day; lunar.status=unavailable, lunar.month=null, lunar.day=null, and solar_term=null"
   },
   "timezone": "Asia/Shanghai",
   "civil_day_boundary": "00:00:00 Asia/Shanghai",
@@ -109,8 +109,8 @@ Golden vectors:
 | Solar-term day | `2024-06-21` | `2024-06-21` | `五` | `五` | `十六` | `夏至` | available |
 | Non-solar-term day | `2024-02-24` | `2024-02-24` | `六` | `正` | `十五` | null | available |
 | Supported-range start | `1900-01-31` | `1900-01-31` | `三` | `正` | `初一` | null | available |
-| Below supported range | `1899-12-31` | `1899-12-31` | null | null | null | null | unavailable |
-| Above supported range | `2101-01-01` | `2101-01-01` | null | null | null | null | unavailable |
+| Below supported range | `1899-12-31` | `1899-12-31` | `日` | null | null | null | unavailable |
+| Above supported range | `2101-01-01` | `2101-01-01` | `六` | null | null | null | unavailable |
 
 Checksum reproduction command:
 
@@ -140,6 +140,15 @@ Shared rules for all QWeather HTTP interfaces:
   in order; if a provider warning payload includes legacy `refer.sources[]`, it
   must also be preserved in order without rewriting because the QWeather
   attribution terms require warning source text to be displayed unchanged;
+- numeric provider ratios consumed from `humidity` and precipitation
+  `probability` paths are valid only when finite and within `[0, 1]`; public
+  `humidity_percent` and `precipitation_probability_percent` are computed as
+  `Math.round(ratio * 100)`, for example fixture `0.72 -> 72` and
+  `0.64 -> 64`; missing, non-finite, or out-of-range ratio facts remain `null`;
+- QWeather current v1 has no consumed observation-time path in this frozen
+  contract, so `observed_at=null` unless a future re-freeze explicitly adds and
+  pins an observation-time JSON path; `updated_at` is the server parse/cache
+  refresh time;
 - H5 displays `和风天气/QWeather` with exact href
   `https://www.qweather.com`.
 
@@ -147,7 +156,7 @@ Shared rules for all QWeather HTTP interfaces:
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Display current weather | `GET /weather/v1/current/{latitude}/{longitude}` | `https://dev.qweather.com/en/docs/api/weather/weather-current/` | `metadata.tag`, `condition.text`, `condition.code`, `temperature.value`, `temperature.unit`, `humidity`, `wind.direction.compass`, `wind.direction.degree`, `wind.speed.value`, `wind.speed.unit`, `wind.scale`, `precipitation.amount.value`, `precipitation.amount.unit`, `precipitation.intensity.value`, `precipitation.intensity.unit`, `precipitation.type` | `metadata.attributions[]` | `qweather-current-v1-display.fixture.json` | `b33eb93a7e52ebdfdca0a55d10fe6d8b7b7b2b93c89a05c65b904c3d5ebab3bd` | `qweather-current-v1-display-parser@1` |
 | Agricultural/display daily forecast | `GET /weather/v1/daily/{latitude}/{longitude}` with `days=3` for agricultural conversion | `https://dev.qweather.com/en/docs/api/weather/weather-daily-forecast/` | `metadata.tag`, `days[].forecastStartTime`, `days[].forecastEndTime`, `days[].temperatureMin.value`, `days[].temperatureMin.unit`, `days[].temperatureMax.value`, `days[].temperatureMax.unit`, `days[0].daytime.condition.text`, `days[0].daytime.condition.code`, `days[0].daytime.precipitation.amount.value`, `days[0].daytime.precipitation.amount.unit`, `days[0].daytime.precipitation.probability`, `days[0].daytime.precipitation.type`, `days[0].daytime.humidity`, `days[0].daytime.wind.direction.compass`, `days[0].daytime.wind.speed.value`, `days[0].daytime.wind.speed.unit`, `days[0].daytime.wind.scale` | `metadata.attributions[]`; frost is always internal `unknown` because QWeather daily v1 provides no explicit frost fact consumed by Slice 6 | `qweather-daily-v1-agri-display.fixture.json` | `6d513171fa80d53565317cb4e4ac52077b5b7b4c5447c38d764bfe1d96ca915d` | `qweather-daily-v1-agri-display-parser@1` |
-| Display weather warning | `GET /weatheralert/v1/current/{latitude}/{longitude}` | `https://dev.qweather.com/en/docs/api/warning/weather-alert/` | `metadata.tag`, `metadata.zeroResult`, `alerts[].id`, `alerts[].senderName`, `alerts[].issuedTime`, `alerts[].eventType.name`, `alerts[].eventType.code`, `alerts[].severity`, `alerts[].certainty`, `alerts[].color.code`, `alerts[].effectiveTime`, `alerts[].onsetTime`, `alerts[].expireTime`, `alerts[].headline`, `alerts[].description` | `metadata.attributions[]`, optional `refer.sources[]`, `alerts[].senderName` | `qweather-weatheralert-v1-display.fixture.json` | `ad76821d0dcc423e84e530ac7c3dd3c865d685ba093db165cb386dbd68c15b2c` | `qweather-weatheralert-v1-display-parser@1` |
+| Display weather warning | `GET /weatheralert/v1/current/{latitude}/{longitude}` | `https://dev.qweather.com/en/docs/api/warning/weather-alert/` | `metadata.tag`, `metadata.zeroResult`, `refer.sources[]`, `alerts[].id`, `alerts[].senderName`, `alerts[].issuedTime`, `alerts[].eventType.name`, `alerts[].eventType.code`, `alerts[].severity`, `alerts[].certainty`, `alerts[].color.code`, `alerts[].effectiveTime`, `alerts[].onsetTime`, `alerts[].expireTime`, `alerts[].headline`, `alerts[].description` | `metadata.attributions[]`, `refer.sources[]`, `alerts[].senderName` | `qweather-weatheralert-v1-display.fixture.json` | `3178e3d29692cfdbe7d6ea70ec018b9a7fc7f631247e2b5ba6b1fff7ce58d46e` | `qweather-weatheralert-v1-display-parser@1` |
 
 Canonical fixture checksums are computed from minified UTF-8 JSON with
 `JSON.stringify(fixtureObject)` and no trailing newline. The implementation must
@@ -165,7 +174,7 @@ Canonical QWeather fixture bodies:
 ```
 
 ```json
-{"metadata":{"tag":"s6-weatheralert-v1-fixture","zeroResult":false,"attributions":["https://developer.qweather.com/attribution.html","Alert data may be delayed or out of date. Refer to official sources for the latest data."]},"alerts":[{"id":"202608090001","senderName":"杭州市气象台","issuedTime":"2026-08-09T10:00+08:00","eventType":{"name":"暴雨","code":"1003"},"severity":"moderate","certainty":"likely","color":{"code":"blue","red":30,"green":50,"blue":205,"alpha":1},"effectiveTime":"2026-08-09T10:00+08:00","onsetTime":"2026-08-09T11:00+08:00","expireTime":"2026-08-09T20:00+08:00","headline":"杭州市气象台发布暴雨蓝色预警","description":"预计今天局部有短时强降雨。"}]}
+{"metadata":{"tag":"s6-weatheralert-v1-fixture","zeroResult":false,"attributions":["https://developer.qweather.com/attribution.html","Alert data may be delayed or out of date. Refer to official sources for the latest data."]},"refer":{"sources":["杭州市气象台"]},"alerts":[{"id":"202608090001","senderName":"杭州市气象台","issuedTime":"2026-08-09T10:00+08:00","eventType":{"name":"暴雨","code":"1003"},"severity":"moderate","certainty":"likely","color":{"code":"blue","red":30,"green":50,"blue":205,"alpha":1},"effectiveTime":"2026-08-09T10:00+08:00","onsetTime":"2026-08-09T11:00+08:00","expireTime":"2026-08-09T20:00+08:00","headline":"杭州市气象台发布暴雨蓝色预警","description":"预计今天局部有短时强降雨。"}]}
 ```
 
 ## 1. Product Contract
@@ -754,6 +763,9 @@ Rules:
 
 - The date source is server-side and uses Asia/Shanghai civil dates.
 - A civil day boundary is exactly `00:00:00` in Asia/Shanghai.
+- `date`, `weekday`, and `timezone` are always populated from the
+  Asia/Shanghai Gregorian civil day, including when lunar/solar-term calculation
+  is outside the supported range or otherwise unavailable.
 - `SEASON_DATE` may affect this only in development/test, and remains forbidden
   in production.
 - Lunar and solar-term calculation must use a pinned local algorithm or table.
@@ -773,8 +785,10 @@ Rules:
 - Lunar date and solar term are display-only.
 - Lunar date or solar term must not affect seasonal recommendations, weather
   filtering, lifecycle stage, or AI explanation facts in this Slice.
-- If the calendar library/table cannot compute a value, the API must return a
-  visible unavailable state for that field rather than inventing a value.
+- If the calendar library/table cannot compute lunar or solar-term values, the
+  API must return `lunar.status="unavailable"`, `lunar.month=null`,
+  `lunar.day=null`, and `solar_term=null` while preserving Gregorian `date`,
+  `weekday`, and `timezone`.
 
 The frozen calendar manifest and golden vectors are S6 section 0.2.
 
@@ -967,7 +981,7 @@ All failure states are visible, recoverable, and non-500 unless validation fails
 | Well-formed unknown or disabled admin_code | HTTP 200, `region=null`, `agri_region_match.status="unsupported"`, `selected_area_code` equals requested code, `climate_area_code=null`, `proxy_used=false`, weather unavailable, no fake recommendation |
 | Enabled district missing direct/proxy result | Gate failure before release; not a normal runtime branch |
 | Weather provider missing/fails | Weather unavailable; seasonal base recommendation still follows frozen rules |
-| Calendar computation missing | Calendar field unavailable; no invented lunar/solar term |
+| Calendar computation missing | Gregorian `date`/`weekday` remain populated; lunar unavailable; no invented lunar/solar term |
 | Cache corrupt/expired | Miss and recover; no corrupt public response |
 
 ### S6-AC-17 Runtime Configuration

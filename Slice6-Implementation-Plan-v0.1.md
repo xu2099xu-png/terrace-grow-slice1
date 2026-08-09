@@ -459,6 +459,14 @@ Attribution rules:
 - QWeather `metadata.attributions[]`, any legacy warning `refer.sources[]`, and
   weather-warning source names are passed through completely and without
   rewriting in `attribution.sources`.
+- QWeather ratio fields used for public percentages are accepted only as finite
+  `[0, 1]` numbers and converted with `Math.round(ratio * 100)`. Missing,
+  non-finite, or out-of-range values stay `null`; adapters must not default
+  humidity or precipitation probability.
+- Because the frozen current-weather contract consumes no provider observation
+  timestamp, `observed_at` is `null` for QWeather current v1 unless the AC is
+  re-frozen with an explicit observation-time path. `updated_at` is the server
+  parse/cache refresh time.
 - Provider-contract fixtures must include exact provider fields needed by each
   adapter as pinned in AC section 0.3. Public responses must not leak extra raw
   provider data.
@@ -483,7 +491,7 @@ The QWeather provider-contract manifest is frozen in AC section 0.3 for:
   parser `qweather-daily-v1-agri-display-parser@1`;
 - display warning: `GET /weatheralert/v1/current/{latitude}/{longitude}`,
   fixture SHA-256
-  `ad76821d0dcc423e84e530ac7c3dd3c865d685ba093db165cb386dbd68c15b2c`,
+  `3178e3d29692cfdbe7d6ea70ec018b9a7fc7f631247e2b5ba6b1fff7ce58d46e`,
   parser `qweather-weatheralert-v1-display-parser@1`.
 
 Implementation must consume the exact official endpoint paths, official
@@ -607,15 +615,17 @@ Runtime rules:
 - `SEASON_DATE` affects development/test only.
 - Lunar/solar-term values are display-only.
 - Unavailable computation returns `lunar.status="unavailable"` and
-  `solar_term=null`.
+  `solar_term=null`; Gregorian `date`, `weekday`, and `timezone` remain
+  populated from the Asia/Shanghai civil day.
 - No external network call is allowed.
 
 The calendar algorithm is frozen in AC section 0.2 as
 `lunar-javascript@1.7.7`, algorithm version
 `terrace-calendar-lunar-javascript-1.7.7-asia-shanghai-v1`, supported
 Gregorian range `1900-01-31..2100-12-31` inclusive, and outside-range behavior
-`lunar.status=unavailable` plus `solar_term=null`. Golden vectors in AC section
-0.2 are mandatory implementation tests.
+`date`/`weekday` still populated plus `lunar.status=unavailable` and
+`solar_term=null`. Golden vectors in AC section 0.2 are mandatory implementation
+tests.
 
 Boundary rules:
 
@@ -758,6 +768,13 @@ Server unit tests:
   QWeather v7 daily fixture contract,
 - display warning fixture/parser tests derive exact consumed paths from the
   Freeze-time provider-contract manifest; this plan does not define those paths,
+- QWeather warning fixture contains and preserves both `refer.sources[]` and
+  `alerts[].senderName` in attribution/display tests,
+- QWeather public `humidity_percent` and `precipitation_probability_percent`
+  conversion tests cover valid 0..1 ratios, missing values, non-finite values,
+  and out-of-range values,
+- QWeather current-weather parser tests assert `observed_at=null` for the frozen
+  v1 fixture because no observation-time path is consumed,
 - selected-district-only weather lookup/cache and zero climate-proxy retry on
   weather failure,
 - config validation.
