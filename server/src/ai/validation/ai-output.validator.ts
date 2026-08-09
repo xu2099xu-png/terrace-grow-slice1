@@ -9,9 +9,11 @@ const MAX_ANSWER_CHARS = 800;
 const MAX_CITATIONS = 12;
 const FORBIDDEN_TEXT = /<[^>]+>|https?:\/\/|\[[^\]]+\]\([^)]+\)|```|[*#>`]/u;
 const DATE_RE = /\b\d{4}-\d{2}-\d{2}\b/g;
-const PERCENT_RE = /\b\d+(?:\.\d+)?%/g;
-const NUMBER_RE = /\b\d+(?:\.\d+)?\b/g;
-const UNIT_RE = /\b\d+(?:\.\d+)?\s*(?:h|L|℃|cm|天|日|月|%)/g;
+const EXACT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const SIGNED_NUMBER_PATTERN = String.raw`[-+]?\d+(?:\.\d+)?`;
+const NUMBER_RE = new RegExp(String.raw`(?<![A-Za-z0-9_.])${SIGNED_NUMBER_PATTERN}(?![A-Za-z0-9_.])`, 'g');
+const PERCENT_RE = new RegExp(String.raw`(?<![A-Za-z0-9_.])${SIGNED_NUMBER_PATTERN}%(?![A-Za-z0-9_])`, 'g');
+const FROZEN_TRACE_UNITS = ['h', 'L', '℃', 'cm', '天', '日', '月', '%'];
 const CONNECTOR_TOKENS = new Set([
   '是',
   '为',
@@ -48,6 +50,14 @@ const CONNECTOR_TOKENS = new Set([
 const SEGMENTER = typeof Intl !== 'undefined' && 'Segmenter' in Intl
   ? new (Intl as any).Segmenter('zh', { granularity: 'word' })
   : null;
+
+interface TraceValues {
+  dates: Set<string>;
+  percentages: Set<string>;
+  unitValues: Set<string>;
+  numbers: Set<string>;
+  unitValueRe: RegExp;
+}
 
 export class AiValidationError extends Error {
   constructor(message: string) {
@@ -133,31 +143,78 @@ function validateLexicalGrounding(text: string, citedFacts: AiFact[], allTerms: 
     }
   }
 
-  const citedValueText = citedFacts
-    .map((fact) => `${fact.value}${fact.unit ?? ''} ${fact.value} ${fact.unit ?? ''}`)
-    .join(' ');
+  const citedTraceValues = collectTraceValues(citedFacts);
   for (const date of text.match(DATE_RE) ?? []) {
-    if (!citedValueText.includes(date)) throw new AiValidationError(`uncited date: ${date}`);
+    if (!citedTraceValues.dates.has(date)) throw new AiValidationError(`uncited date: ${date}`);
   }
+  const textWithoutDates = text.replace(DATE_RE, ' ');
   for (const percentage of text.match(PERCENT_RE) ?? []) {
-    if (!citedValueText.includes(percentage)) throw new AiValidationError(`uncited percentage: ${percentage}`);
+    if (!citedTraceValues.percentages.has(percentage)) throw new AiValidationError(`uncited percentage: ${percentage}`);
   }
-  for (const unitValue of text.match(UNIT_RE) ?? []) {
+  for (const unitValue of text.match(citedTraceValues.unitValueRe) ?? []) {
     const compact = unitValue.replace(/\s+/g, '');
-    if (!citedValueText.replace(/\s+/g, '').includes(compact)) {
+    if (!citedTraceValues.unitValues.has(compact)) {
       throw new AiValidationError(`uncited unit value: ${unitValue}`);
     }
   }
-  for (const number of text.match(NUMBER_RE) ?? []) {
-    if (!citedValueText.includes(number)) throw new AiValidationError(`uncited number: ${number}`);
+  for (const number of textWithoutDates.match(NUMBER_RE) ?? []) {
+    if (!citedTraceValues.numbers.has(number)) throw new AiValidationError(`uncited number: ${number}`);
   }
 
   const allowedTokens = sentenceAllowedTokens(citedFacts);
-  for (const token of tokenizeText(text)) {
-    if (isNumericOrUnitToken(token, citedValueText)) continue;
+  for (const token of tokenizeText(textWithoutDates)) {
+    if (isNumericOrUnitToken(token, citedTraceValues)) continue;
     if (allowedTokens.has(token) || CONNECTOR_TOKENS.has(token)) continue;
     throw new AiValidationError(`unknown lexical token: ${token}`);
   }
+}
+
+function collectTraceValues(facts: AiFact[]): TraceValues {
+  const unitValueRe = unitValueRegExp(facts);
+  const traceValues: TraceValues = {
+    dates: new Set(),
+    percentages: new Set(),
+    unitValues: new Set(),
+    numbers: new Set(),
+    unitValueRe,
+  };
+
+  for (const fact of facts) {
+    const value = String(fact.value).trim();
+    if (!value) continue;
+    addTraceValue(traceValues, value, unitValueRe);
+    if (fact.unit) addTraceValue(traceValues, `${value}${fact.unit}`, unitValueRe);
+  }
+
+  return traceValues;
+}
+
+function addTraceValue(traceValues: TraceValues, rawValue: string, unitValueRe: RegExp) {
+  const compact = rawValue.replace(/\s+/g, '');
+  if (!compact) return;
+  if (EXACT_DATE_RE.test(compact)) {
+    traceValues.dates.add(compact);
+    return;
+  }
+  for (const date of compact.match(DATE_RE) ?? []) traceValues.dates.add(date);
+  for (const percentage of compact.match(PERCENT_RE) ?? []) traceValues.percentages.add(percentage);
+  for (const unitValue of compact.match(unitValueRe) ?? []) traceValues.unitValues.add(unitValue);
+  for (const number of compact.match(NUMBER_RE) ?? []) traceValues.numbers.add(number);
+}
+
+function unitValueRegExp(facts: AiFact[]): RegExp {
+  const units = new Set(FROZEN_TRACE_UNITS);
+  for (const fact of facts) {
+    if (fact.unit?.trim()) units.add(fact.unit.trim().replace(/\s+/g, ''));
+  }
+  const unitPattern = [...units]
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+    .join('|');
+  return new RegExp(
+    String.raw`(?<![A-Za-z0-9_.+-])${SIGNED_NUMBER_PATTERN}(?:\s*[-~至到]\s*${SIGNED_NUMBER_PATTERN})?\s*(?:${unitPattern})(?![A-Za-z0-9_./%℃-])`,
+    'g',
+  );
 }
 
 function containsTerm(text: string, term: string): boolean {
@@ -203,7 +260,12 @@ function tokenizeText(text: string): string[] {
     .filter(Boolean);
 }
 
-function isNumericOrUnitToken(token: string, citedValueText: string): boolean {
-  if (!/^\d/.test(token)) return false;
-  return citedValueText.replace(/\s+/g, '').includes(token.replace(/\s+/g, ''));
+function isNumericOrUnitToken(token: string, citedTraceValues: TraceValues): boolean {
+  if (!/^[-+]?\d/.test(token)) return false;
+  const compact = token.replace(/\s+/g, '');
+  if ((compact.match(citedTraceValues.unitValueRe) ?? []).some((unitValue) => unitValue === compact)) return true;
+  return citedTraceValues.numbers.has(compact) ||
+    citedTraceValues.percentages.has(compact) ||
+    citedTraceValues.unitValues.has(compact) ||
+    citedTraceValues.dates.has(compact);
 }

@@ -227,6 +227,33 @@ describe('Slice 5 AI gate', () => {
     expect(cache.writeValidated).not.toHaveBeenCalled();
   });
 
+  it('provider trace failure returns provider_unavailable rules and does not cache', async () => {
+    const traceFact = makeFact('sun.hours.max', '日照', 16, 'h')!;
+    const { ai, cache } = service({
+      resolver: {
+        resolve: vi.fn(async () => ({
+          grounded: true,
+          warnings: [],
+          context: {
+            contextType: 'perennial_plan',
+            contextRefs: { crop_id: 'crop-blueberry' },
+            facts: [traceFact],
+            warnings: [],
+            canonicalMaterial: { facts: ['sun.hours.max'] },
+          },
+        })),
+      } as unknown as AiContextResolverService,
+      providerOutput: {
+        sentences: [{ text: '日照是6h。', fact_ids: ['sun.hours.max'] }],
+      },
+    });
+    const res = await ai.ask('user-1', { context_type: 'perennial_plan', question: 'why', crop_id: 'crop-blueberry' } as AskAiDto);
+    expect(res.status).toBe('provider_unavailable');
+    expect(res.source).toBe('rules');
+    expect(res.answer).toBe('日照是16h。');
+    expect(cache.writeValidated).not.toHaveBeenCalled();
+  });
+
   it('valid provider output returns answered source ai and writes cache', async () => {
     const { ai, cache } = service();
     const res = await ai.ask('user-1', { context_type: 'perennial_plan', question: 'why', crop_id: 'crop-blueberry' } as AskAiDto);
