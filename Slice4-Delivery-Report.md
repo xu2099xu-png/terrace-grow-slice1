@@ -4,7 +4,8 @@
 > Frozen AC: `Slice4-Acceptance-Criteria-v1.1.md`
 > Slice 3 baseline: `394ea65782f00a1589429dd0adadfc107657f86d`
 > Slice 4 frozen-design commit: `5b2df953f209dc620fc07336253d96b77bcb73c0`
-> Unique code candidate: `7919bf867b1c33ca7dd089a7a211a7ed75416a39`
+> Unique code candidate: `853852d1d1c118f2f6765b280c4f0ef3d3299a29`
+> Original Slice 4 code candidate: `7919bf867b1c33ca7dd089a7a211a7ed75416a39`
 
 This report records implementation and execution evidence. It does not declare
 Slice 4 PASS/FROZEN; that decision remains with independent review.
@@ -122,12 +123,23 @@ named volume after completion.
 
 ## 7. CI Execution Note
 
-The hosted GitHub Actions job has not run because this candidate is on a feature
-branch and the frozen workflow intentionally triggers only on main pushes and
-pull requests targeting main. This is not a P0 waiver: `actionlint` validates
-the workflow, and every command in the job was executed locally against the
-same lockfiles and Docker topology. The first PR/main event remains the hosted
-runner portability confirmation.
+Hosted GitHub Actions executed through PR #1:
+`https://github.com/xu2099xu-png/terrace-grow-slice1/pull/1`. Process
+documentation commit `6bd0d4b` created the PR for the original Slice 4 code
+candidate, `7919bf867b1c33ca7dd089a7a211a7ed75416a39`.
+
+The first hosted run, `31292532617`, failed only on the Playwright
+`S2-E2E-02` navigation race inside `test-build-smoke`. The closure fix
+addressed that race in `e2e/planting.spec.ts` by changing one fixed 1500ms wait
+to deterministic `waitForURL` and adding the same deterministic wait on the
+second path. No assertion was removed. That fix produced the final Slice 4 code
+candidate `853852d1d1c118f2f6765b280c4f0ef3d3299a29`.
+
+Hosted run `31292692456`, job `test-build-smoke`, completed SUCCESS:
+`https://github.com/xu2099xu-png/terrace-grow-slice1/actions/runs/31292692456`.
+It succeeded all steps, including 50 unit tests, 108 integration/API/H5 tests,
+4 Playwright tests, Slice 2 migration upgrade, build, Compose validation, image
+builds, and production smoke.
 
 ## 8. Expected Product State
 
@@ -143,6 +155,8 @@ runner portability confirmation.
 
 Review code and behavior at exactly:
 
-**`7919bf867b1c33ca7dd089a7a211a7ed75416a39`**
+**`853852d1d1c118f2f6765b280c4f0ef3d3299a29`**
 
-The later report-only commit must not be treated as a replacement code candidate.
+The earlier `7919bf867b1c33ca7dd089a7a211a7ed75416a39` candidate remains
+historical context for the first hosted CI failure. The later report-only commit
+must not be treated as a replacement code candidate.
