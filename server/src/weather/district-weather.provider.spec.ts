@@ -303,6 +303,48 @@ describe('WeatherCacheService', () => {
       .not.toBe(buildWeatherCacheKeyHash(buildWeatherCacheIdentity('110105', '2026-08-09')));
   });
 
+  it('writes cache expiry from the cache write time, not the fixture bucket time', async () => {
+    const storedRows = new Map<string, any>();
+    const delegate = {
+      upsert: vi.fn(async ({ where, create, update }: any) => {
+        const key = where.cacheKeyHash;
+        const row = storedRows.has(key)
+          ? { ...storedRows.get(key), ...update }
+          : create;
+        storedRows.set(key, row);
+        return row;
+      }),
+      findUnique: vi.fn(async ({ where }: any) => {
+        return storedRows.get(where.selectedAreaCode_provider_providerEndpointVersion_bucket_parserVersion
+          ? buildWeatherCacheKeyHash(where.selectedAreaCode_provider_providerEndpointVersion_bucket_parserVersion)
+          : where.cacheKeyHash) ?? null;
+      }),
+    };
+    const service = new WeatherCacheService({ weatherCache: delegate } as any);
+    const identity = buildWeatherCacheIdentity('330106', '2026-08-10');
+    const cacheNow = new Date('2026-08-10T04:03:00.000Z');
+    const fixtureResult = {
+      ...unavailableDistrictWeather(),
+      weather: {
+        ...unavailableDistrictWeather().weather,
+        status: 'available' as const,
+        source: 'qweather',
+        updated_at: '2026-08-09T04:00:00.000Z',
+        cache_hit: false,
+        attribution: { name: '和风天气/QWeather', url: 'https://www.qweather.com', sources: ['source-a'] },
+      },
+    };
+
+    await service.set(identity, fixtureResult, 86400, cacheNow);
+    const row = storedRows.get(buildWeatherCacheKeyHash(identity));
+    expect(row.expiresAt.toISOString()).toBe('2026-08-11T04:03:00.000Z');
+    expect(row.expiresAt.getTime()).toBeGreaterThan(cacheNow.getTime());
+
+    const cached = await service.get(identity, cacheNow);
+    expect(cached?.weather.cache_hit).toBe(true);
+    expect(cached?.weather.updated_at).toBe('2026-08-09T04:00:00.000Z');
+  });
+
   it('treats expired and corrupt cache rows as misses', async () => {
     const delegate = {
       findUnique: vi

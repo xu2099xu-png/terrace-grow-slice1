@@ -157,11 +157,18 @@ compose exec -T server node dist/scripts/seed-qweather-fixture-cache.js \
 node - "$tmp/qweather-seed.json" <<'NODE' || fail "QWeather fixture cache seed body"
 const fs = require('node:fs');
 const body = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-if (body.status !== 'seeded') process.exit(1);
-if (body.selected_area_code !== '330106') process.exit(1);
-if (body.cache_bucket.length !== 10) process.exit(1);
-if (body.fixture_today !== '2026-08-09') process.exit(1);
-if (body.fetch_fixture_calls !== 3) process.exit(1);
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+assert(body.status === 'seeded', `unexpected seed status ${body.status}`);
+assert(body.selected_area_code === '330106', `unexpected seed selected_area_code ${body.selected_area_code}`);
+assert(body.cache_bucket.length === 10, `unexpected seed cache_bucket ${body.cache_bucket}`);
+assert(body.fixture_today === '2026-08-09', `unexpected fixture_today ${body.fixture_today}`);
+assert(body.fixture_now === '2026-08-09T04:00:00.000Z', `unexpected fixture_now ${body.fixture_now}`);
+assert(body.cache_hit === true, `seed cache_hit was ${body.cache_hit}`);
+assert(body.expires_at_is_future === true, `seed expires_at_is_future was ${body.expires_at_is_future}`);
+assert(new Date(body.expires_at).getTime() > new Date(body.cache_now).getTime(), `seed cache expired: ${body.cache_now} >= ${body.expires_at}`);
+assert(body.fetch_fixture_calls === 3, `unexpected fixture fetch calls ${body.fetch_fixture_calls}`);
 NODE
 
 echo "[smoke] restarting server with production WEATHER_PROVIDER=http against seeded cache"
@@ -189,25 +196,30 @@ const expectedSources = [
   '国家预警信息发布中心',
   '中国天气网',
 ];
-function assertWeather(body) {
-  if (!body.region || body.region.admin_code !== '330106') process.exit(1);
-  const match = body.agri_region_match;
-  if (!match || match.selected_area_code !== '330106') process.exit(1);
-  if (match.climate_area_code !== '330102') process.exit(1);
-  if (match.status !== 'nearest_proxy' || match.proxy_used !== true) process.exit(1);
-  if (match.distance_km !== 7.4) process.exit(1);
-  const weather = body.weather;
-  if (!weather || weather.status !== 'available' || weather.source !== 'qweather') process.exit(1);
-  if (weather.cache_hit !== true) process.exit(1);
-  if (weather.attribution?.name !== '和风天气/QWeather') process.exit(1);
-  if (weather.attribution?.url !== 'https://www.qweather.com') process.exit(1);
-  if (JSON.stringify(weather.attribution.sources) !== JSON.stringify(expectedSources)) process.exit(1);
-  if (!weather.warnings.includes('杭州市气象台发布暴雨蓝色预警')) process.exit(1);
-  if (weather.observed_at !== null) process.exit(1);
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
 }
-assertWeather(first);
-assertWeather(second);
-if (JSON.stringify(first.weather) !== JSON.stringify(second.weather)) process.exit(1);
+function assertWeather(body, label) {
+  assert(body.region?.admin_code === '330106', `${label}: expected region.admin_code=330106, got ${body.region?.admin_code}`);
+  const match = body.agri_region_match;
+  assert(match?.selected_area_code === '330106', `${label}: expected selected_area_code=330106, got ${match?.selected_area_code}`);
+  assert(match.climate_area_code === '330102', `${label}: expected climate_area_code=330102, got ${match.climate_area_code}`);
+  assert(match.status === 'nearest_proxy', `${label}: expected nearest_proxy, got ${match.status}`);
+  assert(match.proxy_used === true, `${label}: expected proxy_used=true, got ${match.proxy_used}`);
+  assert(match.distance_km === 7.4, `${label}: expected distance_km=7.4, got ${match.distance_km}`);
+  const weather = body.weather;
+  assert(weather?.status === 'available', `${label}: expected weather.status=available, got ${weather?.status}`);
+  assert(weather.source === 'qweather', `${label}: expected weather.source=qweather, got ${weather.source}`);
+  assert(weather.cache_hit === true, `${label}: expected cache_hit=true, got ${weather.cache_hit}`);
+  assert(weather.attribution?.name === '和风天气/QWeather', `${label}: unexpected attribution.name ${weather.attribution?.name}`);
+  assert(weather.attribution?.url === 'https://www.qweather.com', `${label}: unexpected attribution.url ${weather.attribution?.url}`);
+  assert(JSON.stringify(weather.attribution.sources) === JSON.stringify(expectedSources), `${label}: unexpected attribution.sources ${JSON.stringify(weather.attribution.sources)}`);
+  assert(weather.warnings.includes('杭州市气象台发布暴雨蓝色预警'), `${label}: warning missing from ${JSON.stringify(weather.warnings)}`);
+  assert(weather.observed_at === null, `${label}: expected observed_at=null, got ${weather.observed_at}`);
+}
+assertWeather(first, 'first');
+assertWeather(second, 'second');
+assert(JSON.stringify(first.weather) === JSON.stringify(second.weather), `weather cache equality failed: first=${JSON.stringify(first.weather)} second=${JSON.stringify(second.weather)}`);
 NODE
 
 node - "$BASE_URL" <<'NODE' || fail "QWeather fixture H5 visibility"

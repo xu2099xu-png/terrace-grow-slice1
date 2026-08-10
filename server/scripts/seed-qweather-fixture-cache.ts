@@ -15,7 +15,8 @@ import {
 
 const DEFAULT_SELECTED_AREA_CODE = '330102';
 const DEFAULT_FIXTURE_TODAY = '2026-08-09';
-const DEFAULT_NOW = '2026-08-09T04:00:00.000Z';
+const DEFAULT_FIXTURE_NOW = '2026-08-09T04:00:00.000Z';
+const CACHE_TTL_SECONDS = 86400;
 const FIXTURE_HOST = 'qweather-fixture.invalid';
 
 function arg(name: string): string | undefined {
@@ -54,11 +55,13 @@ async function main() {
   const selectedAreaCode = arg('selected-area-code') ?? DEFAULT_SELECTED_AREA_CODE;
   const cacheBucket = arg('cache-bucket') ?? arg('today') ?? DEFAULT_FIXTURE_TODAY;
   const fixtureToday = arg('fixture-today') ?? DEFAULT_FIXTURE_TODAY;
-  const now = new Date(arg('now') ?? DEFAULT_NOW);
+  const fixtureNow = new Date(arg('fixture-now') ?? DEFAULT_FIXTURE_NOW);
+  const cacheNow = new Date(arg('cache-now') ?? arg('now') ?? new Date().toISOString());
   if (!/^\d{6}$/.test(selectedAreaCode)) throw new Error('selected-area-code must be 6 digits');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(cacheBucket)) throw new Error('cache-bucket must be YYYY-MM-DD');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fixtureToday)) throw new Error('fixture-today must be YYYY-MM-DD');
-  if (Number.isNaN(now.getTime())) throw new Error('now must be a valid instant');
+  if (Number.isNaN(fixtureNow.getTime())) throw new Error('fixture-now must be a valid instant');
+  if (Number.isNaN(cacheNow.getTime())) throw new Error('cache-now must be a valid instant');
 
   const fixtures = {
     current: readFixture(QWEATHER_CURRENT_FIXTURE.file),
@@ -93,7 +96,7 @@ async function main() {
       latitude: 30.2289457,
       longitude: 120.1928017,
       today: fixtureToday,
-      now,
+      now: fixtureNow,
     });
     if (!live.cacheable || live.result.weather.status !== 'available') {
       throw new Error(`fixture weather was not cacheable available: ${JSON.stringify(live.result.weather)}`);
@@ -101,17 +104,23 @@ async function main() {
 
     const cache = new WeatherCacheService(prisma as any);
     const identity = buildWeatherCacheIdentity(selectedAreaCode, cacheBucket);
-    await cache.set(identity, live.result, 86400, now);
-    const cached = await cache.get(identity, now);
+    await cache.set(identity, live.result, CACHE_TTL_SECONDS, cacheNow);
+    const cached = await cache.get(identity, cacheNow);
     if (!cached || cached.weather.cache_hit !== true) {
       throw new Error('seeded QWeather fixture cache row did not read back as a cache hit');
     }
+    const expiresAt = new Date(cacheNow.getTime() + CACHE_TTL_SECONDS * 1000);
 
     console.log(JSON.stringify({
       status: 'seeded',
       selected_area_code: selectedAreaCode,
       cache_bucket: cacheBucket,
       fixture_today: fixtureToday,
+      fixture_now: fixtureNow.toISOString(),
+      cache_now: cacheNow.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      expires_at_is_future: expiresAt.getTime() > cacheNow.getTime(),
+      cache_hit: cached.weather.cache_hit,
       provider: identity.provider,
       provider_endpoint_version: identity.providerEndpointVersion,
       parser_version: identity.parserVersion,
