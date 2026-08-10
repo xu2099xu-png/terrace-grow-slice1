@@ -108,6 +108,7 @@ const cropRows = [{
   coverImage: '/assets/carrot.jpg',
   harvestDaysMin: 60,
   harvestDaysMax: 80,
+  environmentRequirement: [{ id: 'env-carrot', minSunHours: 6 }],
 }, {
   id: 'crop-lettuce',
   name: '生菜',
@@ -162,13 +163,19 @@ describe('SeasonalHome.vue', () => {
     expect(mockApi.get).toHaveBeenCalledTimes(2);
     expect(mockApi.get).toHaveBeenCalledWith('/seasonal/home?admin_code=330102');
     expect(mockApi.get).toHaveBeenCalledWith('/crops?life_type=seasonal');
+    expect(wrapper.find('.van-nav-bar__title').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('时令种植');
+    expect(wrapper.text()).toContain('当前区县');
     expect(wrapper.text()).toContain('浙江省 · 杭州市 · 上城区');
     expect(wrapper.text()).toContain('区县天气');
+    expect(wrapper.text()).toContain('26°C');
     expect(wrapper.text()).toContain('今天');
-    expect(wrapper.text()).toContain('今日概览');
+    expect(wrapper.text()).toContain('2026-08-10 · 周一');
     expect(wrapper.text()).toContain('今日推荐');
     expect(wrapper.text()).toContain('胡萝卜');
-    expect(wrapper.text()).toContain('60-80 天采收');
+    expect(wrapper.text()).toContain('时令内');
+    expect(wrapper.text()).toContain('建议直播');
+    expect(wrapper.text()).toContain('60-80天');
     expect(wrapper.findAll('.plant-card')).toHaveLength(2);
     expect(wrapper.get('.plant-card img').attributes('src')).toBe('/assets/carrot.jpg');
     expect(wrapper.get('.plant-card__media .van-icon').exists()).toBe(true);
@@ -179,11 +186,39 @@ describe('SeasonalHome.vue', () => {
     const gridSource = readFileSync('src/components/home/PlantCardGrid.vue', 'utf8');
 
     expect(homeSource).toContain('class="overview-grid"');
+    expect(homeSource).not.toContain('<van-nav-bar title="时令种植" fixed');
+    expect(homeSource).not.toContain('padding-top: 46px');
     expect(homeSource).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))');
     expect(homeSource).toContain('@media (max-width: 359px)');
     expect(gridSource).toContain('grid-template-columns: repeat(3, minmax(0, 1fr))');
     expect(gridSource).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))');
     expect(gridSource).toContain('class="plant-card__media"');
+    expect(gridSource).toContain('height: 50px');
+    expect(gridSource).toContain('overflow-wrap: anywhere');
+    expect(gridSource).toContain('min-height: 132px');
+    expect(gridSource).not.toContain('minSunHours');
+  });
+
+  it('keeps unknown seasonal status and empty start methods neutral', async () => {
+    storeRegion();
+    mockHomeApis({
+      ...homePayload,
+      seasonal: {
+        ...homePayload.seasonal,
+        items: [{
+          ...homePayload.seasonal.items[0],
+          season_status: 'mystery_status',
+          available_start_methods: [],
+        }],
+      },
+    });
+
+    const wrapper = mount(SeasonalHome, { global: { plugins: [Vant] }, attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('胡萝卜');
+    expect(wrapper.text()).not.toContain('mystery_status');
+    expect(wrapper.text()).not.toContain('建议');
   });
 
   it('keeps QWeather attribution duplicates visible and ordered', async () => {
@@ -224,6 +259,30 @@ describe('SeasonalHome.vue', () => {
       '暴雨蓝色预警',
       '暴雨蓝色预警',
     ]);
+  });
+
+  it('shows weather unavailable without rendering missing weather facts', async () => {
+    storeRegion();
+    mockHomeApis({
+      ...homePayload,
+      weather: {
+        ...homePayload.weather,
+        status: 'unavailable',
+        summary: '',
+        temperature_current_c: null,
+        temperature_min_c: null,
+        temperature_max_c: null,
+        precipitation_probability_percent: null,
+        wind: null,
+      },
+    });
+
+    const wrapper = mount(SeasonalHome, { global: { plugins: [Vant] }, attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('天气暂不可用');
+    expect(wrapper.text()).toContain('不可用');
+    expect(wrapper.findAll('.weather-grid span')).toHaveLength(0);
   });
 
   it('shows recoverable error state when seasonal home fails', async () => {

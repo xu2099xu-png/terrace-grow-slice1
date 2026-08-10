@@ -1,13 +1,12 @@
 <template>
   <div class="seasonal-home">
-    <van-nav-bar title="时令种植" fixed />
-
     <AsyncState v-if="redirecting" message="正在前往地区选择…" loading />
 
     <div v-else class="content">
       <LocationHeader
         :selected-region="selectedRegion"
         :region="home?.region || null"
+        :location-status="home?.seasonal.location_status || ''"
         @change="goLocationPicker"
       />
 
@@ -20,7 +19,6 @@
 
       <template v-else-if="home">
         <section class="overview-section">
-          <SectionHeader title="今日概览" />
           <div class="overview-grid">
             <EnvironmentSummary
               :weather="home.weather"
@@ -48,7 +46,6 @@ import CalendarSummary from '../components/home/CalendarSummary.vue';
 import EnvironmentSummary from '../components/home/EnvironmentSummary.vue';
 import LocationHeader from '../components/home/LocationHeader.vue';
 import SeasonalRecommendationSection from '../components/home/SeasonalRecommendationSection.vue';
-import SectionHeader from '../components/shared/SectionHeader.vue';
 import {
   fetchSeasonalCrops,
   fetchSeasonalHome,
@@ -161,19 +158,18 @@ onMounted(async () => {
 <style scoped>
 .seasonal-home {
   min-height: 100vh;
-  padding-top: 46px;
   background: #f5f7f4;
 }
 .content {
-  padding: 14px 16px 20px;
+  padding: 10px 12px 20px;
 }
 .overview-section {
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 .overview-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
   align-items: stretch;
 }
 .overview-grid :deep(.summary-card) {

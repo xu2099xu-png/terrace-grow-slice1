@@ -6,12 +6,12 @@
         {{ weatherBadgeText }}
       </van-tag>
     </div>
-    <p class="weather-summary">{{ weather.summary || '天气暂不可用' }}</p>
-    <div class="weather-grid">
-      <span>当前 {{ formatNumber(weather.temperature_current_c, '°C') }}</span>
-      <span>最高 {{ formatNumber(weather.temperature_max_c, '°C') }}</span>
-      <span>最低 {{ formatNumber(weather.temperature_min_c, '°C') }}</span>
-      <span>降水 {{ formatNumber(weather.precipitation_probability_percent, '%') }}</span>
+    <div class="weather-main">
+      <strong>{{ mainTemperature }}</strong>
+      <span>{{ weather.summary || '天气暂不可用' }}</span>
+    </div>
+    <div v-if="weatherFacts.length" class="weather-grid">
+      <span v-for="fact in weatherFacts" :key="fact">{{ fact }}</span>
     </div>
     <div v-if="weather.warnings.length" class="warning-list">
       <span
@@ -66,9 +66,28 @@ const weatherBadgeText = computed(() => {
   if (props.weather.status === 'partial') return props.weather.cache_hit ? '部分缓存' : '部分';
   return props.weather.cache_hit ? '缓存' : '实时';
 });
+const mainTemperature = computed(() =>
+  props.weather.status === 'unavailable'
+    ? '—'
+    : formatNumber(props.weather.temperature_current_c, '°C'),
+);
+const weatherFacts = computed(() => {
+  if (props.weather.status === 'unavailable') return [];
+  const facts = [
+    formatFact('最高', props.weather.temperature_max_c, '°C'),
+    formatFact('最低', props.weather.temperature_min_c, '°C'),
+    formatFact('降水', props.weather.precipitation_probability_percent, '%'),
+    typeof props.weather.wind === 'string' && props.weather.wind ? props.weather.wind : '',
+  ];
+  return facts.filter(Boolean);
+});
 
 function formatNumber(value: number | null, suffix: string): string {
   return typeof value === 'number' && Number.isFinite(value) ? `${value}${suffix}` : '—';
+}
+
+function formatFact(label: string, value: number | null, suffix: string): string {
+  return typeof value === 'number' && Number.isFinite(value) ? `${label} ${value}${suffix}` : '';
 }
 </script>
 
@@ -76,7 +95,7 @@ function formatNumber(value: number | null, suffix: string): string {
 .summary-card {
   background: #fff;
   border-radius: 8px;
-  padding: 14px;
+  padding: 10px;
   margin-bottom: 12px;
   box-shadow: 0 1px 3px rgba(31, 45, 36, 0.06);
   box-sizing: border-box;
@@ -87,24 +106,39 @@ function formatNumber(value: number | null, suffix: string): string {
   justify-content: space-between;
   gap: 12px;
 }
-.weather-summary {
-  margin: 0;
+.weather-main {
+  margin-top: 2px;
+}
+.weather-main strong,
+.weather-main span {
+  display: block;
+}
+.weather-main strong {
+  color: #1f2d24;
+  font-size: 24px;
+  line-height: 1.1;
+}
+.weather-main span {
+  margin-top: 3px;
   color: #646566;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 .weather-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 12px;
+  gap: 6px;
+  margin-top: 8px;
 }
 .weather-grid span {
   border-radius: 8px;
   background: #f4f8f5;
-  padding: 8px;
+  padding: 5px 6px;
   color: #435146;
-  font-size: 13px;
+  font-size: 11px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 .warning-list,
 .attribution {
@@ -128,11 +162,11 @@ function formatNumber(value: number | null, suffix: string): string {
 }
 .proxy-banner {
   border-radius: 8px;
-  padding: 10px 12px;
-  margin-top: 12px;
+  padding: 8px 10px;
+  margin-top: 10px;
   background: #edf7ef;
   color: #2b7042;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.45;
 }
 </style>

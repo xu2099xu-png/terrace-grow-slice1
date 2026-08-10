@@ -1,7 +1,7 @@
 <template>
   <section class="summary-card">
-    <SectionHeader eyebrow="今天" :title="`${today.date} · 周${today.weekday}`" />
-    <p>
+    <SectionHeader eyebrow="今天" :title="todayTitle" />
+    <p class="calendar-lunar">
       <span v-if="today.lunar.status === 'available'">
         农历{{ today.lunar.month }}月{{ today.lunar.day }}
       </span>
@@ -12,27 +12,32 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import SectionHeader from '../shared/SectionHeader.vue';
 import type { SeasonalHomePayload } from '../../api/region-selection';
 
-defineProps<{
+const props = defineProps<{
   today: SeasonalHomePayload['today'];
 }>();
+
+const todayTitle = computed(() =>
+  props.today.weekday ? `${props.today.date} · 周${props.today.weekday}` : props.today.date,
+);
 </script>
 
 <style scoped>
 .summary-card {
   background: #fff;
   border-radius: 8px;
-  padding: 14px;
+  padding: 10px;
   margin-bottom: 12px;
   box-shadow: 0 1px 3px rgba(31, 45, 36, 0.06);
   box-sizing: border-box;
 }
-.summary-card p {
+.calendar-lunar {
   margin: 0;
   color: #646566;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.35;
 }
 </style>

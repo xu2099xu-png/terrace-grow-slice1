@@ -111,7 +111,9 @@ function fail(message) {
   await page.getByTestId('district-option').filter({ hasText: '上城区' }).click();
   await page.waitForURL((url) => !url.hash.startsWith('#/location'), { timeout: 30000 });
   await page.getByText('浙江省 · 杭州市 · 上城区').waitFor({ state: 'visible', timeout: 30000 });
-  await page.getByText('今日概览').waitFor({ state: 'visible', timeout: 30000 });
+  await page.getByText('区县天气').waitFor({ state: 'visible', timeout: 30000 });
+  await page.getByText('今天').waitFor({ state: 'visible', timeout: 30000 });
+  await page.getByText('今日推荐').waitFor({ state: 'visible', timeout: 30000 });
   await page.getByText(/20\d{2}-\d{2}-\d{2} · 周/).waitFor({ state: 'visible', timeout: 30000 });
   await page.getByText('天气暂不可用', { exact: true }).waitFor({ state: 'visible', timeout: 30000 });
   if (await page.getByRole('link', { name: '和风天气/QWeather', exact: true }).count() !== 0) {

@@ -47,7 +47,7 @@ defineEmits<{
 
 <style scoped>
 .recommend-section {
-  margin-top: 14px;
+  margin-top: 8px;
 }
 .count {
   color: #969799;

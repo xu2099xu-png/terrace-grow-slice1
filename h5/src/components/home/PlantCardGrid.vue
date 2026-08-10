@@ -16,12 +16,11 @@
       </span>
       <span class="plant-card__body">
         <strong>{{ item.crop_name }}</strong>
-        <small v-if="startMethodText(item.available_start_methods || [])">
-          {{ startMethodText(item.available_start_methods || []) }}
-        </small>
-        <small v-if="harvestText(cropById[item.crop_id])">{{ harvestText(cropById[item.crop_id]) }}</small>
+        <span v-if="factChips(item).length" class="plant-card__facts">
+          <small v-for="fact in factChips(item)" :key="fact">{{ fact }}</small>
+        </span>
       </span>
-      <van-tag v-if="item.season_status" :type="item.season_status === 'in_window' ? 'success' : 'default'" round>
+      <van-tag v-if="seasonLabel(item.season_status)" :type="item.season_status === 'in_window' ? 'success' : 'default'" round>
         {{ seasonLabel(item.season_status) }}
       </van-tag>
     </button>
@@ -44,7 +43,12 @@ defineEmits<{
 }>();
 
 function seasonLabel(s: string): string {
-  return { in_window: '现在适合', too_early: '还没到时候', too_late: '已过时令', no_data: '暂无数据' }[s] || s;
+  return {
+    in_window: '时令内',
+    too_early: '未到时令',
+    too_late: '已过时令',
+    no_data: '暂无时令',
+  }[s] || '';
 }
 
 function startMethodText(methods: string[]): string {
@@ -59,15 +63,23 @@ function startMethodText(methods: string[]): string {
 function harvestText(crop?: SeasonalCropSummary): string {
   if (!crop) return '';
   if (typeof crop.harvestDaysMin === 'number' && typeof crop.harvestDaysMax === 'number') {
-    return `${crop.harvestDaysMin}-${crop.harvestDaysMax} 天采收`;
+    return `${crop.harvestDaysMin}-${crop.harvestDaysMax}天`;
   }
-  if (typeof crop.harvestDaysMin === 'number') return `${crop.harvestDaysMin} 天起采收`;
-  if (typeof crop.harvestDaysMax === 'number') return `${crop.harvestDaysMax} 天内采收`;
+  if (typeof crop.harvestDaysMin === 'number') return `${crop.harvestDaysMin}天起`;
+  if (typeof crop.harvestDaysMax === 'number') return `${crop.harvestDaysMax}天内`;
   return '';
 }
 
 function coverImage(item: SeasonalRecommendationItem): string {
   return props.cropById[item.crop_id]?.coverImage || '';
+}
+
+function factChips(item: SeasonalRecommendationItem): string[] {
+  const crop = props.cropById[item.crop_id];
+  return [
+    startMethodText(item.available_start_methods || []),
+    harvestText(crop),
+  ].filter(Boolean);
 }
 </script>
 
@@ -79,21 +91,21 @@ function coverImage(item: SeasonalRecommendationItem): string {
 }
 .plant-card {
   width: 100%;
-  min-height: 158px;
+  min-height: 132px;
   border: 0;
   border-radius: 8px;
   background: #fff;
-  padding: 8px;
+  padding: 7px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 7px;
+  gap: 6px;
   text-align: left;
   box-shadow: 0 1px 3px rgba(31, 45, 36, 0.06);
 }
 .plant-card__media {
   width: 100%;
-  aspect-ratio: 1;
+  height: 50px;
   border-radius: 8px;
   background: #eef4ef;
   color: #7d8b80;
@@ -114,26 +126,37 @@ function coverImage(item: SeasonalRecommendationItem): string {
   min-width: 0;
   flex: 1 1 auto;
 }
-.plant-card strong,
-.plant-card small {
+.plant-card strong {
   display: block;
 }
 .plant-card strong {
   color: #1f2d24;
   font-size: 14px;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
-.plant-card small {
-  margin-top: 4px;
+.plant-card__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 5px;
+}
+.plant-card__facts small {
+  display: inline-block;
+  border-radius: 6px;
+  background: #f4f8f5;
+  padding: 2px 4px;
   color: #7d8b80;
-  font-size: 11px;
-  line-height: 1.25;
+  font-size: 10px;
+  line-height: 1.15;
 }
 .plant-card :deep(.van-tag) {
   align-self: flex-start;
   max-width: 100%;
   white-space: normal;
-  line-height: 1.2;
+  line-height: 1.15;
+  font-size: 10px;
+  padding: 2px 5px;
 }
 @media (max-width: 359px) {
   .plant-card-grid {
