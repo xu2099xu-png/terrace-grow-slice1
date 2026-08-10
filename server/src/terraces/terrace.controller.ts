@@ -5,6 +5,8 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { estimateSunlightFromRules } from '../engines/recommend-engine/sunlight';
 import { ClimateZone, SunEstimateRule, SunLevelMap } from '@prisma/client';
 import { UpsertTerraceDto } from './dto/upsert-terrace.dto';
+import { RegionDirectoryService } from '../regions/region-directory.service';
+import { AgriRegionResolverService } from '../regions/resolve-agri-region';
 
 function levelFromDirect(sunExposureLevel: string, levelMap: SunLevelMap[]): { hoursMin: number; hoursMax: number; confidence: string } | null {
   const row = levelMap.find((l) => l.level === sunExposureLevel);
@@ -19,7 +21,11 @@ function resolveZone(cityCode: string, zones: ClimateZone[]): ClimateZone | null
 @Controller('terraces')
 @UseGuards(AuthGuard)
 export class TerraceController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly regions: RegionDirectoryService,
+    private readonly agriRegions: AgriRegionResolverService,
+  ) {}
 
   @Post()
   async upsert(
@@ -28,7 +34,6 @@ export class TerraceController {
   ) {
     const levelMap = await this.prisma.sunLevelMap.findMany();
     const rules = await this.prisma.sunEstimateRule.findMany();
-    const zones = await this.prisma.climateZone.findMany();
 
     let sunHoursMin = 0, sunHoursMax = 0, sunSource = 'unknown', sunConfidence = 'low';
     let sunExposureLevel = body.sunExposureLevel || 'UNKNOWN';
@@ -62,12 +67,37 @@ export class TerraceController {
       sunConfidence = 'low';
     }
 
-    const zone = resolveZone(body.cityCode, zones);
+    let cityCode = body.cityCode ?? null;
+    let regionAdminCode = body.regionAdminCode ?? null;
+    let needsDistrictConfirmation = body.needsDistrictConfirmation ?? false;
+
+    if (regionAdminCode) {
+      const district = await this.regions.findEnabledDistrict(regionAdminCode);
+      if (!district) {
+        throw new BadRequestException('regionAdminCode must be an enabled district admin code');
+      }
+      const match = await this.agriRegions.resolve(regionAdminCode);
+      if (match.status === 'unsupported' || !match.climate_area_code) {
+        throw new BadRequestException('regionAdminCode cannot resolve to a supported agricultural district');
+      }
+      const legacyCityCode = await this.regions.findLegacyCityCodeForDistrict(district.adminCode);
+      if (!legacyCityCode) {
+        throw new BadRequestException('regionAdminCode cannot resolve to a legacy cityCode');
+      }
+      cityCode = legacyCityCode;
+      needsDistrictConfirmation = false;
+    }
+
+    if (!cityCode) {
+      throw new BadRequestException('cityCode or confirmed regionAdminCode is required');
+    }
     const existing = await this.prisma.terraceProfile.findFirst({ where: { userId } });
     const data = {
       userId,
       name: body.name || '我的露台',
-      cityCode: body.cityCode,
+      cityCode,
+      regionAdminCode,
+      needsDistrictConfirmation,
       sunExposureLevel,
       sunHoursMin,
       sunHoursMax,
@@ -91,6 +121,17 @@ export class TerraceController {
     if (!profile) return null;
     const zones = await this.prisma.climateZone.findMany();
     const zone = resolveZone(profile.cityCode, zones);
-    return { ...profile, climateZone: zone?.name || null };
+    const regionContext = profile.regionAdminCode && !profile.needsDistrictConfirmation
+      ? await this.regions.resolveDistrictRegion(profile.regionAdminCode)
+      : null;
+    const region = regionContext
+      ? {
+          admin_code: regionContext.admin_code,
+          name: regionContext.name,
+          province_name: regionContext.province_name,
+          city_name: regionContext.city_name,
+        }
+      : null;
+    return { ...profile, climateZone: zone?.name || null, region };
   }
 }

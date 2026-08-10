@@ -16,6 +16,7 @@
     "test:slice3-gate": "npm --prefix server run test:slice3-gate",
     "test:slice4-gate": "npm --prefix server run test:slice4-gate",
     "test:slice5-gate": "npm --prefix server run test:slice5-gate",
+    "test:slice6-gate": "npm --prefix server run test:slice6-gate",
     "test:migration-upgrade": "npm --prefix server run test:migration-upgrade",
     "test:e2e": "npm --prefix server run test:e2e",
     "test:h5": "npm --prefix h5 run test",

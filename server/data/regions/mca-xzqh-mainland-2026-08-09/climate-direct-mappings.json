@@ -1,0 +1,138 @@
+[
+  {
+    "admin_code": "110101",
+    "climate_zone_code": "north_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  },
+  {
+    "admin_code": "120101",
+    "climate_zone_code": "north_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  },
+  {
+    "admin_code": "310101",
+    "climate_zone_code": "east_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  },
+  {
+    "admin_code": "330102",
+    "climate_zone_code": "east_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  },
+  {
+    "admin_code": "320102",
+    "climate_zone_code": "east_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  },
+  {
+    "admin_code": "320505",
+    "climate_zone_code": "east_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  },
+  {
+    "admin_code": "330203",
+    "climate_zone_code": "east_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  },
+  {
+    "admin_code": "340102",
+    "climate_zone_code": "east_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  },
+  {
+    "admin_code": "320205",
+    "climate_zone_code": "east_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  },
+  {
+    "admin_code": "440103",
+    "climate_zone_code": "south_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  },
+  {
+    "admin_code": "440303",
+    "climate_zone_code": "south_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  },
+  {
+    "admin_code": "350102",
+    "climate_zone_code": "south_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  },
+  {
+    "admin_code": "350203",
+    "climate_zone_code": "south_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  },
+  {
+    "admin_code": "450102",
+    "climate_zone_code": "south_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  },
+  {
+    "admin_code": "130102",
+    "climate_zone_code": "north_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  },
+  {
+    "admin_code": "370102",
+    "climate_zone_code": "north_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  },
+  {
+    "admin_code": "410102",
+    "climate_zone_code": "north_china",
+    "source": "slice6-governed-legacy-climate-zone-proxy-v1",
+    "review_status": "approved",
+    "confidence": 3,
+    "version": 1
+  }
+]

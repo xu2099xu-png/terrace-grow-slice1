@@ -1,0 +1,87 @@
+[
+  {
+    "legacy_city_code": "beijing",
+    "region_admin_code": "110000",
+    "needs_district_confirmation": true
+  },
+  {
+    "legacy_city_code": "tianjin",
+    "region_admin_code": "120000",
+    "needs_district_confirmation": true
+  },
+  {
+    "legacy_city_code": "shanghai",
+    "region_admin_code": "310000",
+    "needs_district_confirmation": true
+  },
+  {
+    "legacy_city_code": "hangzhou",
+    "region_admin_code": "330100",
+    "needs_district_confirmation": true
+  },
+  {
+    "legacy_city_code": "nanjing",
+    "region_admin_code": "320100",
+    "needs_district_confirmation": true
+  },
+  {
+    "legacy_city_code": "suzhou",
+    "region_admin_code": "320500",
+    "needs_district_confirmation": true
+  },
+  {
+    "legacy_city_code": "ningbo",
+    "region_admin_code": "330200",
+    "needs_district_confirmation": true
+  },
+  {
+    "legacy_city_code": "hefei",
+    "region_admin_code": "340100",
+    "needs_district_confirmation": true
+  },
+  {
+    "legacy_city_code": "wuxi",
+    "region_admin_code": "320200",
+    "needs_district_confirmation": true
+  },
+  {
+    "legacy_city_code": "guangzhou",
+    "region_admin_code": "440100",
+    "needs_district_confirmation": true
+  },
+  {
+    "legacy_city_code": "shenzhen",
+    "region_admin_code": "440300",
+    "needs_district_confirmation": true
+  },
+  {
+    "legacy_city_code": "fuzhou",
+    "region_admin_code": "350100",
+    "needs_district_confirmation": true
+  },
+  {
+    "legacy_city_code": "xiamen",
+    "region_admin_code": "350200",
+    "needs_district_confirmation": true
+  },
+  {
+    "legacy_city_code": "nanning",
+    "region_admin_code": "450100",
+    "needs_district_confirmation": true
+  },
+  {
+    "legacy_city_code": "shijiazhuang",
+    "region_admin_code": "130100",
+    "needs_district_confirmation": true
+  },
+  {
+    "legacy_city_code": "jinan",
+    "region_admin_code": "370100",
+    "needs_district_confirmation": true
+  },
+  {
+    "legacy_city_code": "zhengzhou",
+    "region_admin_code": "410100",
+    "needs_district_confirmation": true
+  }
+]

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { chooseBeijingDistrict } from './helpers/slice6-flows';
 
 async function clearBrowserState(page: import('@playwright/test').Page) {
   await page.goto('/#/');
@@ -25,13 +26,13 @@ test('baseline onboarding: fresh home creates identity and builds target grape t
     deviceId: expect.stringMatching(/^h5-/),
   });
 
+  await page.goto('/#/perennial');
   await expect(page.getByRole('button', { name: /葡萄/ })).toBeVisible();
   await page.getByRole('button', { name: /葡萄/ }).click();
   await page.waitForURL('**/#/terrace?target_crop_id=crop-grape');
 
-  await expect(page.getByText('选择城市')).toBeVisible();
-  await page.getByText('北京', { exact: true }).click();
-  await page.getByRole('button', { name: '下一步' }).click();
+  await expect(page.getByText('您所在的区县？')).toBeVisible();
+  await chooseBeijingDistrict(page);
   await page.getByText('阳光充足（大部分白天都有阳光）').click();
   await page.getByRole('button', { name: '下一步' }).click();
   await page.getByText('会淋到雨').click();

@@ -1,8 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { CALENDAR_ALGORITHM_VERSION } from '../calendar/calendar.types';
+import {
+  QWEATHER_ENDPOINT_VERSION,
+  QWEATHER_PARSER_VERSION,
+} from '../weather/qweather-contract';
 
 export type AppEnvironment = 'development' | 'test' | 'production';
 export type AiProviderMode = 'off' | 'mock' | 'openai_compatible';
+export type ExternalProviderMode = 'off' | 'http' | 'mock';
 
 export interface RuntimeConfig {
   appEnv: AppEnvironment;
@@ -13,12 +19,23 @@ export interface RuntimeConfig {
   corsOrigins: string[];
   allowDraftFixtures: boolean;
   locationResolver: 'http' | 'mock';
-  weatherProvider: 'http' | 'mock';
+  locationProvider: ExternalProviderMode;
+  locationProviderBaseUrl?: string;
+  locationProviderApiKey?: string;
+  locationProviderTimeoutMs: number;
+  weatherProvider: ExternalProviderMode;
+  weatherProviderBaseUrl?: string;
+  weatherProviderApiKey?: string;
+  weatherProviderTimeoutMs: number;
+  weatherCacheTtlSeconds: number;
+  weatherEndpointVersion: string;
+  weatherParserVersion: string;
+  regionCatalogVersion: string;
+  calendarAlgorithmVersion: string;
   seasonDate?: string;
   locationApiKey?: string;
   qWeatherApiHost?: string;
   qWeatherKey?: string;
-  weatherProviderTimeoutMs: number;
   rateLimitGlobalLimit: number;
   rateLimitTtlMs: number;
   aiProvider: AiProviderMode;
@@ -40,6 +57,12 @@ const REJECTED_PRODUCTION_SECRETS = new Set([
   'replace-with-a-strong-secret-in-production',
   'change-me',
   'changeme',
+]);
+const REGION_CATALOG_VERSION = 'mca-xzqh-mainland-2026-08-09';
+const QWEATHER_SHARED_HOSTS = new Set([
+  'api.qweather.com',
+  'devapi.qweather.com',
+  'geoapi.qweather.com',
 ]);
 
 export class ConfigValidationError extends Error {
@@ -80,6 +103,18 @@ function parseMode(
   const raw = optionalString(value) ?? fallback;
   if (raw !== 'http' && raw !== 'mock') {
     throw new ConfigValidationError(variable, 'must be http or mock');
+  }
+  return raw;
+}
+
+function parseExternalProviderMode(
+  variable: string,
+  value: unknown,
+  fallback: ExternalProviderMode,
+): ExternalProviderMode {
+  const raw = optionalString(value) ?? fallback;
+  if (raw !== 'off' && raw !== 'http' && raw !== 'mock') {
+    throw new ConfigValidationError(variable, 'must be off, http, or mock');
   }
   return raw;
 }
@@ -146,6 +181,51 @@ function validatePromptVersion(value: string): string {
   return value;
 }
 
+function validateProviderBaseUrl(variable: string, value: string, appEnv: AppEnvironment): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ConfigValidationError(variable, 'must be a valid URL');
+  }
+  if (appEnv === 'production' && url.protocol !== 'https:') {
+    throw new ConfigValidationError(variable, 'must use HTTPS in production');
+  }
+  if (url.protocol === 'https:') {
+    return url.toString().replace(/\/$/, '');
+  }
+  if (
+    url.protocol === 'http:'
+    && ['localhost', '127.0.0.1', '::1'].includes(url.hostname)
+  ) {
+    return url.toString().replace(/\/$/, '');
+  }
+  throw new ConfigValidationError(
+    variable,
+    'must use HTTPS, except localhost HTTP in development/test',
+  );
+}
+
+function parseFrozenValue(variable: string, value: unknown, expected: string): string {
+  const raw = optionalString(value);
+  if (raw === undefined) return expected;
+  if (raw !== expected) {
+    throw new ConfigValidationError(variable, `must equal ${expected}`);
+  }
+  return expected;
+}
+
+function validateQWeatherHost(variable: string, value: string): string {
+  const host = value.trim().toLowerCase();
+  if (!/^[a-z0-9.-]+$/i.test(host)) {
+    throw new ConfigValidationError(variable, 'must be a valid host');
+  }
+  if (QWEATHER_SHARED_HOSTS.has(host)) {
+    throw new ConfigValidationError(variable, 'must not use a QWeather shared host');
+  }
+  return value;
+}
+
 function parseJwtExpiresIn(value: unknown): string {
   const raw = optionalString(value) ?? '365d';
   if (!/^[1-9]\d*(?:ms|s|m|h|d|w|y)$/.test(raw)) {
@@ -200,7 +280,10 @@ export function parseRuntimeEnvironment(env: Record<string, unknown>): RuntimeCo
   }
 
   const locationResolver = parseMode('LOCATION_RESOLVER', env.LOCATION_RESOLVER, 'http');
-  const weatherProvider = parseMode('WEATHER_PROVIDER', env.WEATHER_PROVIDER, 'http');
+  const locationProvider = optionalString(env.LOCATION_PROVIDER)
+    ? parseExternalProviderMode('LOCATION_PROVIDER', env.LOCATION_PROVIDER, 'off')
+    : locationResolver === 'mock' ? 'mock' : 'off';
+  const weatherProvider = parseExternalProviderMode('WEATHER_PROVIDER', env.WEATHER_PROVIDER, 'off');
   const aiProvider = parseAiProviderMode(env.AI_PROVIDER);
   const seasonDate = optionalString(env.SEASON_DATE);
   const corsOrigins = parseCorsOrigins(env.CORS_ORIGINS);
@@ -232,6 +315,53 @@ export function parseRuntimeEnvironment(env: Record<string, unknown>): RuntimeCo
   const aiProviderModel = aiProvider === 'openai_compatible'
     ? requireString('AI_PROVIDER_MODEL', env.AI_PROVIDER_MODEL)
     : optionalString(env.AI_PROVIDER_MODEL);
+  const locationProviderBaseUrl = optionalString(env.LOCATION_PROVIDER_BASE_URL)
+    ? validateProviderBaseUrl(
+      'LOCATION_PROVIDER_BASE_URL',
+      requireString('LOCATION_PROVIDER_BASE_URL', env.LOCATION_PROVIDER_BASE_URL),
+      appEnv,
+    )
+    : undefined;
+  const weatherProviderBaseUrl = optionalString(env.WEATHER_PROVIDER_BASE_URL)
+    ? validateProviderBaseUrl(
+      'WEATHER_PROVIDER_BASE_URL',
+      requireString('WEATHER_PROVIDER_BASE_URL', env.WEATHER_PROVIDER_BASE_URL),
+      appEnv,
+    )
+    : undefined;
+  const locationProviderTimeoutMs = locationProvider === 'http'
+    ? requireExplicitInteger('LOCATION_PROVIDER_TIMEOUT_MS', env.LOCATION_PROVIDER_TIMEOUT_MS, 1, 30000)
+    : parseInteger('LOCATION_PROVIDER_TIMEOUT_MS', env.LOCATION_PROVIDER_TIMEOUT_MS, 3000, 1, 30000);
+  const weatherProviderTimeoutMs = weatherProvider === 'http'
+    ? requireExplicitInteger('WEATHER_PROVIDER_TIMEOUT_MS', env.WEATHER_PROVIDER_TIMEOUT_MS, 1, 30000)
+    : parseInteger('WEATHER_PROVIDER_TIMEOUT_MS', env.WEATHER_PROVIDER_TIMEOUT_MS, 3500, 1, 30000);
+  const weatherCacheTtlSeconds = parseInteger(
+    'WEATHER_CACHE_TTL_SECONDS',
+    env.WEATHER_CACHE_TTL_SECONDS,
+    900,
+    1,
+    86400,
+  );
+  const regionCatalogVersion = parseFrozenValue(
+    'REGION_CATALOG_VERSION',
+    env.REGION_CATALOG_VERSION,
+    REGION_CATALOG_VERSION,
+  );
+  const calendarAlgorithmVersion = parseFrozenValue(
+    'CALENDAR_ALGORITHM_VERSION',
+    env.CALENDAR_ALGORITHM_VERSION,
+    CALENDAR_ALGORITHM_VERSION,
+  );
+  const weatherEndpointVersion = parseFrozenValue(
+    'WEATHER_ENDPOINT_VERSION',
+    env.WEATHER_ENDPOINT_VERSION,
+    QWEATHER_ENDPOINT_VERSION,
+  );
+  const weatherParserVersion = parseFrozenValue(
+    'WEATHER_PARSER_VERSION',
+    env.WEATHER_PARSER_VERSION,
+    QWEATHER_PARSER_VERSION,
+  );
 
   if (appEnv === 'production') {
     if (!optionalString(env.JWT_SECRET) || jwtSecret.length < 32) {
@@ -253,6 +383,30 @@ export function parseRuntimeEnvironment(env: Record<string, unknown>): RuntimeCo
     if (weatherProvider === 'mock') {
       throw new ConfigValidationError('WEATHER_PROVIDER', 'mock is forbidden in production');
     }
+    if (locationProvider === 'mock') {
+      throw new ConfigValidationError('LOCATION_PROVIDER', 'mock is forbidden in production');
+    }
+    if (locationProvider === 'http') {
+      requireString('LOCATION_PROVIDER_API_KEY', env.LOCATION_PROVIDER_API_KEY);
+      if (!locationProviderBaseUrl) {
+        throw new ConfigValidationError('LOCATION_PROVIDER_BASE_URL', 'is required');
+      }
+    }
+    if (weatherProvider === 'http') {
+      requireString('WEATHER_PROVIDER_API_KEY', env.WEATHER_PROVIDER_API_KEY);
+      if (!weatherProviderBaseUrl && !optionalString(env.QWEATHER_API_HOST)) {
+        throw new ConfigValidationError('WEATHER_PROVIDER_BASE_URL', 'or QWEATHER_API_HOST is required');
+      }
+      if (weatherProviderBaseUrl) {
+        validateQWeatherHost('WEATHER_PROVIDER_BASE_URL', new URL(weatherProviderBaseUrl).hostname);
+      }
+      if (optionalString(env.QWEATHER_API_HOST)) {
+        validateQWeatherHost(
+          'QWEATHER_API_HOST',
+          requireString('QWEATHER_API_HOST', env.QWEATHER_API_HOST),
+        );
+      }
+    }
     if (aiProvider === 'mock') {
       throw new ConfigValidationError('AI_PROVIDER', 'mock is forbidden in production');
     }
@@ -267,12 +421,23 @@ export function parseRuntimeEnvironment(env: Record<string, unknown>): RuntimeCo
     corsOrigins: corsOrigins.length > 0 ? corsOrigins : ['http://localhost:5173'],
     allowDraftFixtures,
     locationResolver,
+    locationProvider,
+    locationProviderBaseUrl,
+    locationProviderApiKey: optionalString(env.LOCATION_PROVIDER_API_KEY),
+    locationProviderTimeoutMs,
     weatherProvider,
+    weatherProviderBaseUrl,
+    weatherProviderApiKey: optionalString(env.WEATHER_PROVIDER_API_KEY),
+    weatherProviderTimeoutMs,
+    weatherCacheTtlSeconds,
+    weatherEndpointVersion,
+    weatherParserVersion,
+    regionCatalogVersion,
+    calendarAlgorithmVersion,
     seasonDate,
     locationApiKey: optionalString(env.LOCATION_API_KEY),
     qWeatherApiHost: optionalString(env.QWEATHER_API_HOST),
     qWeatherKey: optionalString(env.QWEATHER_KEY),
-    weatherProviderTimeoutMs: parseInteger('WEATHER_PROVIDER_TIMEOUT_MS', env.WEATHER_PROVIDER_TIMEOUT_MS, 3500, 1, 30000),
     rateLimitGlobalLimit: parseInteger('RATE_LIMIT_GLOBAL_LIMIT', env.RATE_LIMIT_GLOBAL_LIMIT, 300, 1, 10000),
     rateLimitTtlMs: parseInteger('RATE_LIMIT_TTL_MS', env.RATE_LIMIT_TTL_MS, 60000, 1000, 3600000),
     aiProvider,
@@ -296,8 +461,12 @@ export class AppConfigService {
     const keys = [
       'APP_ENV', 'DATABASE_URL', 'PORT', 'JWT_SECRET', 'JWT_EXPIRES_IN',
       'CORS_ORIGINS', 'ALLOW_DRAFT_FIXTURES', 'LOCATION_RESOLVER',
-      'WEATHER_PROVIDER', 'SEASON_DATE', 'LOCATION_API_KEY', 'QWEATHER_API_HOST',
-      'QWEATHER_KEY', 'WEATHER_PROVIDER_TIMEOUT_MS', 'RATE_LIMIT_GLOBAL_LIMIT',
+      'LOCATION_PROVIDER', 'LOCATION_PROVIDER_BASE_URL', 'LOCATION_PROVIDER_API_KEY',
+      'LOCATION_PROVIDER_TIMEOUT_MS', 'WEATHER_PROVIDER', 'WEATHER_PROVIDER_BASE_URL',
+      'WEATHER_PROVIDER_API_KEY', 'WEATHER_PROVIDER_TIMEOUT_MS', 'WEATHER_CACHE_TTL_SECONDS',
+      'WEATHER_ENDPOINT_VERSION', 'WEATHER_PARSER_VERSION', 'REGION_CATALOG_VERSION',
+      'CALENDAR_ALGORITHM_VERSION', 'SEASON_DATE', 'LOCATION_API_KEY', 'QWEATHER_API_HOST',
+      'QWEATHER_KEY', 'RATE_LIMIT_GLOBAL_LIMIT',
       'RATE_LIMIT_TTL_MS', 'AI_PROVIDER', 'AI_PROVIDER_BASE_URL',
       'AI_PROVIDER_API_KEY', 'AI_PROVIDER_MODEL', 'AI_PROVIDER_TIMEOUT_MS',
       'AI_PROMPT_VERSION', 'AI_EXPLANATION_CACHE_TTL_SECONDS',

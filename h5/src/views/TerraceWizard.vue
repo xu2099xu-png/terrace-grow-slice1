@@ -3,25 +3,11 @@
     <van-nav-bar title="创建露台档案" fixed left-arrow @click-left="goBack" />
 
     <div v-if="step === 1" class="step">
-      <h2>您所在的城市？</h2>
+      <h2>您所在的区县？</h2>
       <p class="hint">用于匹配气候区与需冷量估算</p>
-      <van-cell-group inset title="选择城市">
-        <van-cell v-if="cityLoading" title="城市列表加载中…" />
-        <van-cell
-          v-for="c in cities"
-          :key="c.city_code"
-          :title="c.city_name"
-          clickable
-          @click="cityCode = c.city_code"
-        >
-          <template #right-icon>
-            <van-icon v-if="cityCode === c.city_code" name="success" color="#07c160" />
-          </template>
-        </van-cell>
-        <van-empty v-if="!cityLoading && !cities.length" description="暂无可选城市" />
-      </van-cell-group>
+      <RegionPicker :selected-region="selectedRegion" @select="selectRegion" />
       <div class="actions">
-        <van-button type="primary" block round @click="nextStep" :disabled="!cityCode">下一步</van-button>
+        <van-button type="primary" block round @click="nextStep" :disabled="!selectedRegion">下一步</van-button>
       </div>
     </div>
 
@@ -128,18 +114,19 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import api from '../api/client';
+import RegionPicker from '../components/RegionPicker.vue';
+import type { SelectedRegionMetadata } from '../api/region-selection';
 
 const router = useRouter();
 const route = useRoute();
 const step = ref(1);
 const cityCode = ref('');
+const selectedRegion = ref<SelectedRegionMetadata | null>(null);
 const sunExposureLevel = ref('');
 const orientation = ref('');
 const timeObs = ref('');
 const rainExposed = ref<boolean | null>(null);
 const loading = ref(false);
-const cityLoading = ref(false);
-const cities = ref<{ city_code: string; city_name: string }[]>([]);
 const targetCropId = computed(() => {
   const value = route.query.target_crop_id;
   return typeof value === 'string' && value ? value : null;
@@ -159,7 +146,7 @@ function goBack() {
 
 function nextStep() {
   if (step.value === 1) {
-    step.value = 2; // city -> sunlight
+    step.value = 2; // district -> sunlight
   } else if (step.value === 2 && sunExposureLevel.value === 'UNSURE') {
     step.value = 3; // auxiliary questions for unsure sunlight
   } else if (step.value === 2 || step.value === 3) {
@@ -167,14 +154,24 @@ function nextStep() {
   }
 }
 
+function selectRegion(region: SelectedRegionMetadata) {
+  selectedRegion.value = region;
+  step.value = 2;
+}
+
 async function submit() {
   loading.value = true;
   try {
+    const regionAdminCode = selectedRegion.value?.admin_code;
     const payload: any = {
       name: '我的露台',
-      cityCode: cityCode.value,
       rainExposed: rainExposed.value, // mandatory: step 4 cannot be skipped
     };
+    if (regionAdminCode) {
+      payload.regionAdminCode = regionAdminCode;
+    } else if (cityCode.value) {
+      payload.cityCode = cityCode.value;
+    }
     if (sunExposureLevel.value && sunExposureLevel.value !== 'UNSURE') {
       payload.sunExposureLevel = sunExposureLevel.value;
     } else {
@@ -195,24 +192,26 @@ async function submit() {
   }
 }
 
-async function loadCities() {
-  cityLoading.value = true;
-  try {
-    const res = await api.get('/location/supported-cities');
-    cities.value = res.data;
-  } catch (e) {
-    showToast('城市列表加载失败');
-  } finally {
-    cityLoading.value = false;
-  }
-}
-
 async function prefillExistingProfile() {
   try {
     const res = await api.get('/terraces/mine');
     const profile = res.data;
     if (!profile) return;
     cityCode.value = profile.cityCode || '';
+    const region = profile.region || null;
+    const regionAdminCode = profile.regionAdminCode || profile.region_admin_code || region?.admin_code;
+    const regionName = profile.regionName || profile.region_name || region?.name;
+    const provinceName = profile.provinceName || profile.province_name || region?.province_name;
+    const cityName = profile.cityName || profile.city_name || region?.city_name;
+    if (regionAdminCode && regionName && provinceName && cityName && !profile.needsDistrictConfirmation) {
+      selectedRegion.value = {
+        admin_code: regionAdminCode,
+        name: regionName,
+        province_name: provinceName,
+        city_name: cityName,
+        selected_at: new Date().toISOString(),
+      };
+    }
     sunExposureLevel.value = profile.sunExposureLevel || '';
     orientation.value = profile.sunOrientationRaw || '';
     timeObs.value = profile.sunTimeObsRaw || '';
@@ -223,7 +222,7 @@ async function prefillExistingProfile() {
 }
 
 onMounted(async () => {
-  await Promise.all([loadCities(), prefillExistingProfile()]);
+  await prefillExistingProfile();
 });
 </script>
 

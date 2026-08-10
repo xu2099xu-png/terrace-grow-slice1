@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { IsResourceId } from '../../http/dto/shared.dto';
 
 export class UpsertTerraceDto {
@@ -8,9 +8,21 @@ export class UpsertTerraceDto {
   @MaxLength(80)
   name?: string;
 
+  @IsOptional()
   @IsString()
   @IsResourceId()
-  cityCode!: string;
+  cityCode?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{6}$/, {
+    message: 'regionAdminCode must be a 6-digit administrative code',
+  })
+  regionAdminCode?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  needsDistrictConfirmation?: boolean;
 
   @IsOptional()
   @IsString()

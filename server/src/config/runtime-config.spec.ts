@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { ConfigValidationError, parseRuntimeEnvironment } from './runtime-config';
 
+const frozenWeatherEndpointVersion = 'qweather-v1-display-current-daily-warning';
+const frozenWeatherParserVersion =
+  'qweather-current-v1-display-parser@1+qweather-daily-v1-agri-display-parser@1+qweather-weatheralert-v1-display-parser@2';
+const frozenRegionCatalogVersion = 'mca-xzqh-mainland-2026-08-09';
+const frozenCalendarAlgorithmVersion =
+  'terrace-calendar-lunar-javascript-1.7.7-asia-shanghai-v1';
+
 const base = () => ({
   APP_ENV: 'development',
   DATABASE_URL: 'postgresql://terrace:terrace@localhost:5433/terrace_grow',
@@ -59,6 +66,13 @@ describe('Slice 4 runtime configuration', () => {
 
   it('defaults AI explanation configuration to provider off', () => {
     const config = parseRuntimeEnvironment(base());
+    expect(config.regionCatalogVersion).toBe(frozenRegionCatalogVersion);
+    expect(config.locationProvider).toBe('off');
+    expect(config.weatherProvider).toBe('off');
+    expect(config.weatherCacheTtlSeconds).toBe(900);
+    expect(config.calendarAlgorithmVersion).toBe(frozenCalendarAlgorithmVersion);
+    expect(config.weatherEndpointVersion).toBe(frozenWeatherEndpointVersion);
+    expect(config.weatherParserVersion).toBe(frozenWeatherParserVersion);
     expect(config.aiProvider).toBe('off');
     expect(config.aiProviderTimeoutMs).toBe(5000);
     expect(config.aiPromptVersion).toBe('slice5-v1');
@@ -162,5 +176,119 @@ describe('Slice 4 runtime configuration', () => {
       expect(String(error)).toContain('AI_PROVIDER_BASE_URL');
       expect(String(error)).not.toContain(apiKey);
     }
+  });
+
+  it('accepts explicit Slice 6 provider config in development', () => {
+    const config = parseRuntimeEnvironment({
+      ...base(),
+      REGION_CATALOG_VERSION: frozenRegionCatalogVersion,
+      LOCATION_PROVIDER: 'http',
+      LOCATION_PROVIDER_BASE_URL: 'http://localhost:3100',
+      LOCATION_PROVIDER_API_KEY: 'location-test-key',
+      LOCATION_PROVIDER_TIMEOUT_MS: '2500',
+      WEATHER_PROVIDER: 'http',
+      WEATHER_PROVIDER_BASE_URL: 'http://localhost:3200',
+      WEATHER_PROVIDER_API_KEY: 'weather-test-key',
+      WEATHER_PROVIDER_TIMEOUT_MS: '2600',
+      WEATHER_CACHE_TTL_SECONDS: '600',
+      WEATHER_ENDPOINT_VERSION: frozenWeatherEndpointVersion,
+      WEATHER_PARSER_VERSION: frozenWeatherParserVersion,
+      CALENDAR_ALGORITHM_VERSION: frozenCalendarAlgorithmVersion,
+    });
+    expect(config.locationProvider).toBe('http');
+    expect(config.locationProviderBaseUrl).toBe('http://localhost:3100');
+    expect(config.locationProviderApiKey).toBe('location-test-key');
+    expect(config.locationProviderTimeoutMs).toBe(2500);
+    expect(config.weatherProvider).toBe('http');
+    expect(config.weatherProviderBaseUrl).toBe('http://localhost:3200');
+    expect(config.weatherProviderApiKey).toBe('weather-test-key');
+    expect(config.weatherProviderTimeoutMs).toBe(2600);
+    expect(config.weatherCacheTtlSeconds).toBe(600);
+  });
+
+  it.each([
+    ['REGION_CATALOG_VERSION', { REGION_CATALOG_VERSION: 'other-region-catalog' }],
+    ['CALENDAR_ALGORITHM_VERSION', { CALENDAR_ALGORITHM_VERSION: 'other-calendar' }],
+    ['WEATHER_ENDPOINT_VERSION', { WEATHER_ENDPOINT_VERSION: 'qweather-v1' }],
+    ['WEATHER_PARSER_VERSION', { WEATHER_PARSER_VERSION: 'qweather-display-parser@1' }],
+  ])('rejects non-frozen manifest override %s without echoing secrets', (variable, override) => {
+    const secret = 'weather-secret-value-that-must-not-be-printed';
+    try {
+      parseRuntimeEnvironment({
+        ...base(),
+        WEATHER_PROVIDER_API_KEY: secret,
+        ...override,
+      });
+      throw new Error('expected configuration failure');
+    } catch (error) {
+      expect(String(error)).toContain(variable);
+      expect(String(error)).not.toContain(secret);
+    }
+  });
+
+  it('keeps frozen Slice 3-compatible positive provider timeout minimums', () => {
+    const config = parseRuntimeEnvironment({
+      ...base(),
+      LOCATION_PROVIDER: 'http',
+      LOCATION_PROVIDER_BASE_URL: 'http://localhost:3100',
+      LOCATION_PROVIDER_API_KEY: 'location-test-key',
+      LOCATION_PROVIDER_TIMEOUT_MS: '1',
+      WEATHER_PROVIDER: 'http',
+      WEATHER_PROVIDER_BASE_URL: 'http://localhost:3200',
+      WEATHER_PROVIDER_API_KEY: 'weather-test-key',
+      WEATHER_PROVIDER_TIMEOUT_MS: '1',
+    });
+    expect(config.locationProviderTimeoutMs).toBe(1);
+    expect(config.weatherProviderTimeoutMs).toBe(1);
+  });
+
+  it.each([
+    ['LOCATION_PROVIDER', { LOCATION_PROVIDER: 'mock' }],
+    ['LOCATION_PROVIDER_API_KEY', {
+      LOCATION_PROVIDER: 'http',
+      LOCATION_PROVIDER_BASE_URL: 'https://location.example.com',
+      LOCATION_PROVIDER_TIMEOUT_MS: '2500',
+    }],
+    ['LOCATION_PROVIDER_BASE_URL', {
+      LOCATION_PROVIDER: 'http',
+      LOCATION_PROVIDER_API_KEY: 'location-test-key',
+      LOCATION_PROVIDER_TIMEOUT_MS: '2500',
+    }],
+    ['WEATHER_PROVIDER_API_KEY', {
+      WEATHER_PROVIDER: 'http',
+      WEATHER_PROVIDER_BASE_URL: 'https://weather.example.com',
+      WEATHER_PROVIDER_TIMEOUT_MS: '2500',
+    }],
+    ['WEATHER_PROVIDER_BASE_URL', {
+      WEATHER_PROVIDER: 'http',
+      WEATHER_PROVIDER_API_KEY: 'weather-test-key',
+      WEATHER_PROVIDER_TIMEOUT_MS: '2500',
+    }],
+    ['WEATHER_PROVIDER_BASE_URL', {
+      WEATHER_PROVIDER: 'http',
+      WEATHER_PROVIDER_BASE_URL: 'https://api.qweather.com',
+      WEATHER_PROVIDER_API_KEY: 'weather-test-key',
+      WEATHER_PROVIDER_TIMEOUT_MS: '2500',
+    }],
+    ['QWEATHER_API_HOST', {
+      WEATHER_PROVIDER: 'http',
+      QWEATHER_API_HOST: 'devapi.qweather.com',
+      WEATHER_PROVIDER_API_KEY: 'weather-test-key',
+      WEATHER_PROVIDER_TIMEOUT_MS: '2500',
+    }],
+  ])('production Slice 6 provider config rejects invalid %s', (variable, override) => {
+    expect(() => parseRuntimeEnvironment({ ...production(), ...override })).toThrow(variable);
+  });
+
+  it('production weather http accepts a dedicated QWeather host compatibility field', () => {
+    const config = parseRuntimeEnvironment({
+      ...production(),
+      WEATHER_PROVIDER: 'http',
+      QWEATHER_API_HOST: 'abc123.qweatherapi.com',
+      WEATHER_PROVIDER_API_KEY: 'weather-test-key',
+      WEATHER_PROVIDER_TIMEOUT_MS: '2500',
+    });
+    expect(config.weatherProvider).toBe('http');
+    expect(config.qWeatherApiHost).toBe('abc123.qweatherapi.com');
   });
 });

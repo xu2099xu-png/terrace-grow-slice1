@@ -18,6 +18,33 @@ vi.mock('../api/client', () => ({
   },
 }));
 
+vi.mock('../components/RegionPicker.vue', async () => {
+  const { defineComponent, h } = await import('vue');
+  return {
+    default: defineComponent({
+      props: ['selectedRegion'],
+      emits: ['select'],
+      setup(props, { emit }) {
+        return () => h('div', { 'data-testid': 'mock-region-picker' }, [
+          props.selectedRegion
+            ? h('span', `${props.selectedRegion.province_name} ${props.selectedRegion.city_name} ${props.selectedRegion.name}`)
+            : null,
+          h('button', {
+            type: 'button',
+            onClick: () => emit('select', {
+              admin_code: '330102',
+              name: '上城区',
+              province_name: '浙江省',
+              city_name: '杭州市',
+              selected_at: '2026-08-10T00:00:00.000Z',
+            }),
+          }, '选择上城区'),
+        ]);
+      },
+    }),
+  };
+});
+
 import api from '../api/client';
 
 const mockApi = api as unknown as {
@@ -25,84 +52,115 @@ const mockApi = api as unknown as {
   post: ReturnType<typeof vi.fn>;
 };
 
-const cities = [
-  { city_code: 'beijing', city_name: '北京' },
-  { city_code: 'shanghai', city_name: '上海' },
-];
-
 describe('TerraceWizard.vue city selection and return target', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     query = {};
   });
 
-  it('uses supported-cities and returns to the target crop after submit', async () => {
+  it('auto-advances after active district selection and returns to the target crop after submit', async () => {
     query = { target_crop_id: 'crop-grape' };
-    mockApi.get
-      .mockResolvedValueOnce({ data: cities })
-      .mockResolvedValueOnce({ data: null });
+    mockApi.get.mockResolvedValueOnce({ data: null });
     mockApi.post.mockResolvedValueOnce({ data: { id: 'terrace-1' } });
 
     const wrapper = mount(TerraceWizard, { global: { plugins: [Vant] } });
     await flushPromises();
 
-    expect(wrapper.text()).toContain('北京');
-    await wrapper.findAll('.van-cell').find((cell) => cell.text().includes('北京'))!.trigger('click');
-    await wrapper.get('button').trigger('click');
+    expect(wrapper.text()).toContain('您所在的区县');
+    await wrapper.get('[data-testid="mock-region-picker"] button').trigger('click');
     await flushPromises();
+    expect(wrapper.text()).toContain('露台日照情况');
     await wrapper.findAll('.van-cell').find((cell) => cell.text().includes('阳光充足'))!.trigger('click');
-    await wrapper.get('button').trigger('click');
+    await wrapper.get('.actions button').trigger('click');
     await flushPromises();
     await wrapper.findAll('.van-cell').find((cell) => cell.text().includes('会淋到雨'))!.trigger('click');
-    await wrapper.get('button').trigger('click');
+    await wrapper.get('.actions button').trigger('click');
     await flushPromises();
 
     expect(mockApi.post).toHaveBeenCalledWith('/terraces', {
       name: '我的露台',
-      cityCode: 'beijing',
+      regionAdminCode: '330102',
       rainExposed: true,
       sunExposureLevel: 'LONG',
     });
     expect(push).toHaveBeenCalledWith('/plan/crop-grape');
   });
 
-  it('prefills an existing profile and returns to mine by default', async () => {
-    mockApi.get
-      .mockResolvedValueOnce({ data: cities })
-      .mockResolvedValueOnce({
-        data: {
-          cityCode: 'shanghai',
-          sunExposureLevel: 'MEDIUM',
-          rainExposed: false,
+  it('prefills an existing district without auto-advancing and returns to mine by default', async () => {
+    mockApi.get.mockResolvedValueOnce({
+      data: {
+        cityCode: 'shanghai',
+        needsDistrictConfirmation: false,
+        region: {
+          admin_code: '310101',
+          name: '黄浦区',
+          province_name: '上海市',
+          city_name: '上海市',
         },
-      });
+        sunExposureLevel: 'MEDIUM',
+        rainExposed: false,
+      },
+    });
     mockApi.post.mockResolvedValueOnce({ data: { id: 'terrace-1' } });
 
     const wrapper = mount(TerraceWizard, { global: { plugins: [Vant] } });
     await flushPromises();
 
-    expect(wrapper.text()).toContain('上海');
-    await wrapper.get('button').trigger('click');
+    expect(wrapper.text()).toContain('上海市 上海市 黄浦区');
+    expect(wrapper.text()).toContain('您所在的区县');
+    await wrapper.get('.actions button').trigger('click');
     await flushPromises();
-    await wrapper.get('button').trigger('click');
+    await wrapper.get('.actions button').trigger('click');
     await flushPromises();
-    await wrapper.get('button').trigger('click');
+    await wrapper.get('.actions button').trigger('click');
     await flushPromises();
 
     expect(mockApi.post).toHaveBeenCalledWith('/terraces', {
       name: '我的露台',
-      cityCode: 'shanghai',
+      regionAdminCode: '310101',
       rainExposed: false,
       sunExposureLevel: 'MEDIUM',
     });
     expect(push).toHaveBeenCalledWith('/mine');
   });
 
+  it('keeps city-level legacy profiles on manual cityCode payload until a district is confirmed', async () => {
+    mockApi.get.mockResolvedValueOnce({
+      data: {
+        cityCode: 'shanghai',
+        needsDistrictConfirmation: true,
+        region: null,
+        sunExposureLevel: 'MEDIUM',
+        rainExposed: false,
+      },
+    });
+    mockApi.post.mockResolvedValueOnce({ data: { id: 'terrace-1' } });
+
+    const wrapper = mount(TerraceWizard, { global: { plugins: [Vant] } });
+    await flushPromises();
+
+    expect(wrapper.text()).not.toContain('上海市 上海市 黄浦区');
+    await wrapper.get('[data-testid="mock-region-picker"] button').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('露台日照情况');
+    await wrapper.findAll('.van-cell').find((cell) => cell.text().includes('半天左右'))!.trigger('click');
+    await wrapper.get('.actions button').trigger('click');
+    await flushPromises();
+    await wrapper.findAll('.van-cell').find((cell) => cell.text().includes('基本淋不到'))!.trigger('click');
+    await wrapper.get('.actions button').trigger('click');
+    await flushPromises();
+
+    expect(mockApi.post).toHaveBeenCalledWith('/terraces', {
+      name: '我的露台',
+      regionAdminCode: '330102',
+      rainExposed: false,
+      sunExposureLevel: 'MEDIUM',
+    });
+  });
+
   it('uses return_to=mine for the first-step back action', async () => {
     query = { return_to: 'mine' };
-    mockApi.get
-      .mockResolvedValueOnce({ data: cities })
-      .mockResolvedValueOnce({ data: null });
+    mockApi.get.mockResolvedValueOnce({ data: null });
 
     const wrapper = mount(TerraceWizard, { global: { plugins: [Vant] } });
     await flushPromises();

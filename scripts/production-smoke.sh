@@ -14,6 +14,9 @@ export JWT_SECRET="slice4-container-smoke-jwt-secret-value-0001"
 export CORS_ORIGINS="http://127.0.0.1:${H5_PORT}"
 export APP_ENV="production"
 export AI_PROVIDER="off"
+export LOCATION_PROVIDER="off"
+export WEATHER_PROVIDER="off"
+export REGION_CATALOG_VERSION="mca-xzqh-mainland-2026-08-09"
 export H5_PORT
 
 compose() {
@@ -70,6 +73,192 @@ tmp="$(mktemp -d)"
 [ "$(cat "$tmp/ready.json")" = '{"status":"ready"}' ] || fail "readiness body"
 [ "$(http_code "$BASE_URL/api/health/content" "$tmp/content.json")" = "503" ] || fail "content status"
 [ "$(cat "$tmp/content.json")" = '{"status":"not_ready"}' ] || fail "content body"
+
+[ "$(http_code "$BASE_URL/" "$tmp/h5.html")" = "200" ] || fail "H5 ingress"
+grep -q '<div id="app"' "$tmp/h5.html" || fail "H5 ingress app root missing"
+
+node - "$BASE_URL" <<'NODE' || fail "production H5 first-use manual district selection"
+const { chromium } = require('@playwright/test');
+const baseUrl = process.argv[2];
+function fail(message) {
+  throw new Error(message);
+}
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  await page.addInitScript(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: (_success, error) => {
+          error({ code: 1, message: 'denied', PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 });
+        },
+      },
+    });
+  });
+  await page.goto(`${baseUrl}/#/`, { waitUntil: 'domcontentloaded' });
+  await page.getByText('定位未完成，请手动选择区县。').waitFor({ state: 'visible', timeout: 30000 });
+  await page.getByTestId('region-picker').waitFor({ state: 'visible', timeout: 30000 });
+  await page.getByTestId('province-option').filter({ hasText: '浙江省' }).click();
+  await page.getByRole('tab', { name: '城市' }).click();
+  await page.getByTestId('city-option').filter({ hasText: '杭州市' }).click();
+  await page.getByRole('tab', { name: '区县' }).click();
+  await page.getByTestId('district-option').filter({ hasText: '上城区' }).click();
+  await page.getByText('浙江省 · 杭州市 · 上城区').waitFor({ state: 'visible', timeout: 30000 });
+  const selected = await page.evaluate(() => JSON.parse(localStorage.getItem('terrace:selected-region') || 'null'));
+  if (!selected || selected.admin_code !== '330102' || selected.name !== '上城区') {
+    fail(`unexpected selected region ${JSON.stringify(selected)}`);
+  }
+  await browser.close();
+})().catch(async (error) => {
+  console.error(error);
+  process.exit(1);
+});
+NODE
+
+[ "$(http_code "$BASE_URL/api/location/regions?level=district&parent_admin_code=110000" "$tmp/beijing-districts.json")" = "200" ] \
+  || fail "region district API"
+node - "$tmp/beijing-districts.json" <<'NODE' || fail "municipality district API body"
+const fs = require('node:fs');
+const rows = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+if (!Array.isArray(rows)) process.exit(1);
+const first = rows[0];
+if (!first || first.admin_code !== '110101' || first.parent_admin_code !== '110000') process.exit(1);
+if (first.is_municipality !== false) process.exit(1);
+NODE
+
+[ "$(http_code "$BASE_URL/api/seasonal/home?admin_code=330106" "$tmp/seasonal-home.json")" = "200" ] \
+  || fail "seasonal home selected/proxy fixture"
+node - "$tmp/seasonal-home.json" <<'NODE' || fail "seasonal home selected/proxy provider-off body"
+const fs = require('node:fs');
+const body = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+if (!body.today || typeof body.today.date !== 'string' || body.today.timezone !== 'Asia/Shanghai') process.exit(1);
+if (!body.region || body.region.admin_code !== '330106') process.exit(1);
+const match = body.agri_region_match;
+if (!match || match.selected_area_code !== '330106') process.exit(1);
+if (match.status !== 'nearest_proxy' || match.proxy_used !== true) process.exit(1);
+if (match.climate_area_code !== '330102') process.exit(1);
+if (match.distance_km !== 7.4) process.exit(1);
+if (!body.weather || body.weather.status !== 'unavailable' || body.weather.source !== null) process.exit(1);
+if (body.weather.attribution?.name !== null || body.weather.attribution?.url !== null) process.exit(1);
+if (!body.seasonal || !Array.isArray(body.seasonal.items)) process.exit(1);
+NODE
+QWEATHER_CACHE_BUCKET="$(node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync(process.argv[1]));if(!x.today?.date)process.exit(1);process.stdout.write(x.today.date)" "$tmp/seasonal-home.json")"
+
+echo "[smoke] seeding QWeather fixture cache"
+compose exec -T server node dist/scripts/seed-qweather-fixture-cache.js \
+  --selected-area-code 330106 \
+  --cache-bucket "$QWEATHER_CACHE_BUCKET" \
+  --fixture-today 2026-08-09 \
+  >"$tmp/qweather-seed.json" \
+  || fail "QWeather fixture cache seed"
+node - "$tmp/qweather-seed.json" <<'NODE' || fail "QWeather fixture cache seed body"
+const fs = require('node:fs');
+const body = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+if (body.status !== 'seeded') process.exit(1);
+if (body.selected_area_code !== '330106') process.exit(1);
+if (body.cache_bucket.length !== 10) process.exit(1);
+if (body.fixture_today !== '2026-08-09') process.exit(1);
+if (body.fetch_fixture_calls !== 3) process.exit(1);
+NODE
+
+echo "[smoke] restarting server with production WEATHER_PROVIDER=http against seeded cache"
+export WEATHER_PROVIDER="http"
+export WEATHER_PROVIDER_BASE_URL="https://qweather-fixture.invalid"
+export WEATHER_PROVIDER_API_KEY="smoke-fixture-key"
+export WEATHER_PROVIDER_TIMEOUT_MS="1000"
+compose up -d --wait --wait-timeout 240 --force-recreate server h5 >/dev/null \
+  || fail "server restart with QWeather http fixture config"
+
+[ "$(http_code "$BASE_URL/api/seasonal/home?admin_code=330106" "$tmp/qweather-home-1.json")" = "200" ] \
+  || fail "QWeather fixture seasonal home first"
+[ "$(http_code "$BASE_URL/api/seasonal/home?admin_code=330106" "$tmp/qweather-home-2.json")" = "200" ] \
+  || fail "QWeather fixture seasonal home second"
+node - "$tmp/qweather-home-1.json" "$tmp/qweather-home-2.json" <<'NODE' || fail "QWeather fixture API cache equality"
+const fs = require('node:fs');
+const first = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const second = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+const expectedSources = [
+  'https://developer.qweather.com/attribution.html',
+  'https://developer.qweather.com/attribution.html',
+  'https://developer.qweather.com/attribution.html',
+  'Alert data may be delayed or out of date. Refer to official sources for the latest data.',
+  '杭州市气象台',
+  '国家预警信息发布中心',
+  '中国天气网',
+];
+function assertWeather(body) {
+  if (!body.region || body.region.admin_code !== '330106') process.exit(1);
+  const match = body.agri_region_match;
+  if (!match || match.selected_area_code !== '330106') process.exit(1);
+  if (match.climate_area_code !== '330102') process.exit(1);
+  if (match.status !== 'nearest_proxy' || match.proxy_used !== true) process.exit(1);
+  if (match.distance_km !== 7.4) process.exit(1);
+  const weather = body.weather;
+  if (!weather || weather.status !== 'available' || weather.source !== 'qweather') process.exit(1);
+  if (weather.cache_hit !== true) process.exit(1);
+  if (weather.attribution?.name !== '和风天气/QWeather') process.exit(1);
+  if (weather.attribution?.url !== 'https://www.qweather.com') process.exit(1);
+  if (JSON.stringify(weather.attribution.sources) !== JSON.stringify(expectedSources)) process.exit(1);
+  if (!weather.warnings.includes('杭州市气象台发布暴雨蓝色预警')) process.exit(1);
+  if (weather.observed_at !== null) process.exit(1);
+}
+assertWeather(first);
+assertWeather(second);
+if (JSON.stringify(first.weather) !== JSON.stringify(second.weather)) process.exit(1);
+NODE
+
+node - "$BASE_URL" <<'NODE' || fail "QWeather fixture H5 visibility"
+const { chromium } = require('@playwright/test');
+const baseUrl = process.argv[2];
+const expectedSources = [
+  'https://developer.qweather.com/attribution.html',
+  'https://developer.qweather.com/attribution.html',
+  'https://developer.qweather.com/attribution.html',
+  'Alert data may be delayed or out of date. Refer to official sources for the latest data.',
+  '杭州市气象台',
+  '国家预警信息发布中心',
+  '中国天气网',
+];
+function fail(message) {
+  throw new Error(message);
+}
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  await page.addInitScript(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem('terrace:selected-region', JSON.stringify({
+      admin_code: '330106',
+      name: '西湖区',
+      province_name: '浙江省',
+      city_name: '杭州市',
+      selected_at: '2026-08-10T00:00:00.000Z',
+    }));
+  });
+  await page.goto(`${baseUrl}/#/`, { waitUntil: 'domcontentloaded' });
+  const anchor = page.getByRole('link', { name: '和风天气/QWeather', exact: true });
+  await anchor.waitFor({ state: 'visible', timeout: 30000 });
+  const href = await anchor.getAttribute('href');
+  if (href !== 'https://www.qweather.com') fail(`unexpected QWeather href ${href}`);
+  const panelText = await page.locator('.weather-panel').innerText({ timeout: 30000 });
+  if (!panelText.includes('缓存')) fail('cache badge is not visible');
+  if (!panelText.includes('杭州市气象台发布暴雨蓝色预警')) fail('warning headline is not visible');
+  let lastIndex = -1;
+  for (const source of expectedSources) {
+    const index = panelText.indexOf(source, lastIndex + 1);
+    if (index <= lastIndex) fail(`source order missing or unstable: ${source}`);
+    lastIndex = index;
+  }
+  await browser.close();
+})().catch(async (error) => {
+  console.error(error);
+  process.exit(1);
+});
+NODE
 
 [ "$(http_code "$BASE_URL/api/crops?life_type=seasonal" "$tmp/seasonal.json")" = "200" ] || fail "seasonal catalog"
 [ "$(cat "$tmp/seasonal.json")" = '[]' ] || fail "draft seasonal content leaked"

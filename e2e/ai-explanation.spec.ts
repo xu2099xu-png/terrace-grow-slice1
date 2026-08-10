@@ -1,25 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
-
-async function createSunnyTerrace(page: Page) {
-  await page.goto('/#/terrace?target_crop_id=crop-blueberry');
-  await expect(page.getByText('您所在的城市？')).toBeVisible();
-  await page.getByRole('button', { name: '北京' }).click();
-  await page.getByRole('button', { name: '下一步' }).click();
-  await expect(page.getByText('露台日照情况')).toBeVisible();
-  await page.getByText('阳光充足（大部分白天都有阳光）').click();
-  await page.getByRole('button', { name: '下一步' }).click();
-  await expect(page.getByText('露台是否淋雨？')).toBeVisible();
-  await page.getByText('会淋到雨').click();
-  await page.getByRole('button', { name: '完成' }).click();
-  await page.waitForURL('**/#/plan/crop-blueberry');
-}
+import { createSunnyTerrace } from './helpers/slice6-flows';
 
 async function openGrapePlan(page: Page) {
   await createSunnyTerrace(page);
-  await page.goto('/#/');
-  await page.reload();
-  await expect(page.getByText('葡萄').first()).toBeVisible();
-  await page.getByText('葡萄').first().click();
+  await page.goto('/#/plan/crop-grape');
   await page.waitForURL('**/#/plan/crop-grape');
   await expect(page.getByRole('button', { name: '开始种植' })).toBeVisible({ timeout: 15000 });
 }

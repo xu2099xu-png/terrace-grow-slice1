@@ -66,6 +66,12 @@ jobs:
       - name: Slice 5 AI gate
         run: npm run test:slice5-gate
 
+      - name: Slice 6 catalog check
+        run: npm --prefix server run catalog:check
+
+      - name: Slice 6 gate
+        run: npm run test:slice6-gate
+
       - name: Migration upgrade gate
         run: npm run test:migration-upgrade
 

@@ -1,9 +1,13 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
+const apiPort = process.env.E2E_API_PORT || '3000';
+const h5Port = Number(process.env.E2E_H5_PORT || '5173');
+const apiTarget = process.env.VITE_API_PROXY_TARGET || `http://localhost:${apiPort}`;
+
 const apiProxy = {
   '/api': {
-    target: 'http://localhost:3000',
+    target: apiTarget,
     changeOrigin: true,
   },
 };
@@ -11,11 +15,11 @@ const apiProxy = {
 export default defineConfig({
   plugins: [vue()],
   server: {
-    port: 5173,
+    port: h5Port,
     proxy: apiProxy,
   },
   preview: {
-    port: 5173,
+    port: h5Port,
     proxy: apiProxy,
   },
 });

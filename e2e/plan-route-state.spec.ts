@@ -1,18 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
-
-async function createSunnyTerrace(page: Page) {
-  await page.goto('/#/terrace?target_crop_id=crop-blueberry');
-  await expect(page.getByText('您所在的城市？')).toBeVisible();
-  await page.getByRole('button', { name: '北京' }).click();
-  await page.getByRole('button', { name: '下一步' }).click();
-  await expect(page.getByText('露台日照情况')).toBeVisible();
-  await page.getByText('阳光充足（大部分白天都有阳光）').click();
-  await page.getByRole('button', { name: '下一步' }).click();
-  await expect(page.getByText('露台是否淋雨？')).toBeVisible();
-  await page.getByText('会淋到雨').click();
-  await page.getByRole('button', { name: '完成' }).click();
-  await page.waitForURL('**/#/plan/crop-blueberry');
-}
+import { test, expect } from '@playwright/test';
+import { createSunnyTerrace } from './helpers/slice6-flows';
 
 test('B-E2E-01 plan route crop change ignores stale previous response', async ({ page }) => {
   let releaseBlueberry!: () => void;

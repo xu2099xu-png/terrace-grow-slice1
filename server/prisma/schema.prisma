@@ -56,6 +56,8 @@ model TerraceProfile {
   userId            String
   name              String   @default("我的露台")
   cityCode          String
+  regionAdminCode   String?
+  needsDistrictConfirmation Boolean @default(false)
   lat               Float?
   lng               Float?
   // sunlight quad
@@ -106,6 +108,115 @@ model ClimateZone {
   heatLevel          Int // 1-5 summer heat
 
   sowingCalendars SowingCalendar[]
+}
+
+// ---------- governed Slice 6 region catalog ----------
+
+model Region {
+  adminCode       String   @id
+  name            String
+  level           String // province | city | district
+  parentAdminCode String?
+  isMunicipality  Boolean
+  enabled         Boolean
+  catalogOrder    Int
+  dataVersion     String
+  source          String
+  centroidLng     Float
+  centroidLat     Float
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([level, parentAdminCode, enabled, catalogOrder])
+  @@index([enabled, level])
+}
+
+model PopularCity {
+  id                String   @id @default(uuid())
+  legacyCityCode    String   @unique
+  displayAreaCode   String
+  displayName       String
+  kind              String // city | municipality
+  provinceAdminCode String
+  provinceName      String
+  cityAdminCode     String?
+  cityName          String?
+  catalogOrder      Int
+  enabled           Boolean
+  dataVersion       String
+  source            String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([enabled, kind, catalogOrder])
+  @@index([displayAreaCode])
+}
+
+model RegionClimateMapping {
+  id              String   @id @default(uuid())
+  adminCode       String   @unique
+  climateZoneCode String
+  source          String
+  reviewStatus    String
+  confidence      Int
+  version         Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([climateZoneCode])
+  @@index([reviewStatus, version])
+}
+
+model ClimateAnchor {
+  id              String   @id @default(uuid())
+  adminCode       String   @unique
+  climateZoneCode String
+  centroidLng     Float
+  centroidLat     Float
+  enabled         Boolean
+  source          String
+  reviewStatus    String
+  confidence      Int
+  version         Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([enabled, reviewStatus, climateZoneCode])
+}
+
+model WeatherCache {
+  id                      String   @id @default(uuid())
+  cacheKeyHash            String   @unique
+  selectedAreaCode        String
+  provider                String
+  providerEndpointVersion String
+  parserVersion           String
+  bucket                  String
+  publicWeather           Json
+  dailyWeather            Json
+  attribution             Json
+  status                  String
+  observedAt              DateTime?
+  updatedAt               DateTime
+  expiresAt               DateTime
+
+  @@unique([selectedAreaCode, provider, providerEndpointVersion, bucket, parserVersion], map: "WeatherCache_selected_area_unique")
+  @@index([selectedAreaCode])
+  @@index([expiresAt])
+}
+
+model CalendarContextCache {
+  id               String   @id @default(uuid())
+  date             String
+  timezone         String
+  algorithmVersion String
+  contextJson      Json
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  expiresAt        DateTime?
+
+  @@unique([date, timezone, algorithmVersion])
+  @@index([expiresAt])
 }
 
 // ---------- catalog ----------

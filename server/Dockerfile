@@ -9,6 +9,7 @@ RUN ./node_modules/.bin/prisma generate
 
 COPY tsconfig.json ./
 COPY src ./src
+COPY scripts ./scripts
 RUN npm run build
 
 FROM node:22-alpine AS production-dependencies
@@ -28,6 +29,8 @@ COPY --from=build --chown=node:node /app/node_modules/.prisma ./node_modules/.pr
 COPY --from=build --chown=node:node /app/node_modules/@prisma/client ./node_modules/@prisma/client
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/prisma ./prisma
+COPY --chown=node:node src/weather/fixtures ./dist/src/weather/fixtures
+COPY --chown=node:node data ./data
 COPY --chown=node:node docker-entrypoint.sh ./docker-entrypoint.sh
 
 RUN rm -rf ./node_modules/.cache && chmod 0555 ./docker-entrypoint.sh

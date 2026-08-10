@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { CityResult, LocationResolver } from './location-resolver.interface';
+import { CityResult, DistrictLocationResult, LocationResolver } from './location-resolver.interface';
 
 /** Deterministic mock: nearest known seeded city, or null when far away. */
 @Injectable()
@@ -26,5 +26,29 @@ export class MockLocationResolver implements LocationResolver {
     // >2 degrees away from every seeded city → treat as unresolved (AC-02)
     if (!best || best.dist > 2) return null;
     return { city_code: best.code, city_name: best.name };
+  }
+
+  async resolveDistrict(lat: number, lng: number): Promise<DistrictLocationResult | null> {
+    const city = await this.resolveCity(lat, lng);
+    if (!city) return null;
+    if (city.city_code === 'beijing') {
+      return {
+        admin_code: '110108',
+        name: '海淀区',
+        level: 'district',
+        province_name: '北京市',
+        city_name: '北京市',
+      };
+    }
+    if (city.city_code === 'hangzhou') {
+      return {
+        admin_code: '330106',
+        name: '西湖区',
+        level: 'district',
+        province_name: '浙江省',
+        city_name: '杭州市',
+      };
+    }
+    return null;
   }
 }
