@@ -1,28 +1,37 @@
 <template>
   <div class="mine">
     <van-nav-bar title="我的" fixed />
-    <div class="content">
-      <van-cell-group inset>
-        <van-cell title="露台名称" :value="profile?.name || '—'" />
-        <van-cell title="所在城市" :value="profile?.cityCode || '—'" />
-        <van-cell title="日照估算" :value="sunInfo" />
-        <van-cell title="气候区" :value="profile?.climateZone || '—'" />
-      </van-cell-group>
+    <div v-if="loading" class="state">
+      <van-loading type="spinner" color="#1989fa" />
+      <p>加载中…</p>
+    </div>
 
-      <van-cell-group inset title="我的种植">
-        <van-cell v-if="!plantings.length" title="暂无种植记录" />
-        <van-cell
-          v-for="p in plantings"
-          :key="p.planting_id"
-          :title="p.crop_name + (p.variety_name ? ' / ' + p.variety_name : '')"
-          :label="plantingLabel(p)"
-          is-link
-          @click="router.push(`/plantings/${p.planting_id}`)"
-        />
-      </van-cell-group>
+    <div v-else-if="error" class="state">
+      <p>{{ error }}</p>
+      <van-button round type="primary" @click="load">重试</van-button>
+    </div>
+
+    <div v-else class="content">
+      <ProfileSummary
+        :profile="profile"
+        :sun-info="sunInfo"
+        @edit="openTerraceProfile"
+        @create="openTerraceProfile"
+      />
+
+      <MaterialInventory
+        :materials="materials"
+        :selected-material-ids="selectedMaterialIds"
+        :saving="savingMaterials"
+        :message="saveMessage"
+        @toggle="toggleMaterial"
+        @save="saveMaterials"
+      />
+
+      <PlantingCards :plantings="plantings" @open="openPlanting" />
 
       <div class="actions">
-        <van-button type="primary" block round @click="router.push('/')">返回首页</van-button>
+        <van-button type="primary" block round @click="router.push('/seasonal')">下一步：查看时令种植</van-button>
       </div>
     </div>
   </div>
@@ -32,52 +41,118 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../api/client';
+import ProfileSummary from '../components/profile/ProfileSummary.vue';
+import MaterialInventory from '../components/profile/MaterialInventory.vue';
+import PlantingCards from '../components/profile/PlantingCards.vue';
 
 const router = useRouter();
 const profile = ref<any>(null);
 const plantings = ref<any[]>([]);
+const materials = ref<any[]>([]);
+const selectedMaterialIds = ref<string[]>([]);
+const loading = ref(true);
+const error = ref('');
+const savingMaterials = ref(false);
+const saveMessage = ref('');
 
 const sunInfo = computed(() => {
   if (!profile.value) return '—';
   const min = profile.value.sunHoursMin;
   const max = profile.value.sunHoursMax;
-  const conf = profile.value.sunConfidence === 'low' ? '（不确定）' : '（较确定）';
+  if (typeof min !== 'number' || typeof max !== 'number' || !Number.isFinite(min) || !Number.isFinite(max)) {
+    return '—';
+  }
+  const confidenceLabels: Record<string, string> = {
+    low: '（不确定）',
+    medium: '（较确定）',
+  };
+  const conf = confidenceLabels[profile.value.sunConfidence] || '';
   return `${min}–${max}h${conf}`;
 });
 
-function plantingLabel(p: any): string {
-  const statusMap: Record<string, string> = {
-    planned: '计划中',
-    active: '进行中',
-    established: '已定植完成',
-    lifecycle_unavailable: '流程暂不可用',
-  };
-  const stage = p.current_stage_name ? `当前阶段：${p.current_stage_name} · ` : '';
-  return `${stage}开始于 ${p.start_date} · ${statusMap[p.status] || p.status}`;
+function toggleMaterial(materialId: string) {
+  if (selectedMaterialIds.value.includes(materialId)) {
+    selectedMaterialIds.value = selectedMaterialIds.value.filter((id) => id !== materialId);
+  } else {
+    selectedMaterialIds.value = [...selectedMaterialIds.value, materialId];
+  }
+  saveMessage.value = '';
 }
 
-onMounted(async () => {
+function openTerraceProfile() {
+  router.push('/terrace?return_to=mine');
+}
+
+function openPlanting(plantingId: string) {
+  router.push(`/plantings/${plantingId}`);
+}
+
+async function loadProfile() {
   try {
     const res = await api.get('/terraces/mine');
     profile.value = res.data;
-  } catch (e) {
-    // ignore
+  } catch (e: any) {
+    if (e.response?.status === 404) {
+      profile.value = null;
+      return;
+    }
+    throw e;
   }
+}
+
+async function load() {
+  loading.value = true;
+  error.value = '';
+  saveMessage.value = '';
   try {
-    const res = await api.get('/users/me/plantings');
-    plantings.value = res.data;
-  } catch (e) {
-    // ignore
+    await loadProfile();
+    const [plantingRes, materialRes, mineMaterialRes] = await Promise.all([
+      api.get('/users/me/plantings'),
+      api.get('/materials'),
+      api.get('/materials/mine'),
+    ]);
+    plantings.value = plantingRes.data;
+    materials.value = materialRes.data;
+    selectedMaterialIds.value = mineMaterialRes.data.map((item: any) => item.materialId);
+  } catch (e: any) {
+    error.value = e.response?.data?.message || '加载失败，请重试';
+  } finally {
+    loading.value = false;
   }
-});
+}
+
+async function saveMaterials() {
+  savingMaterials.value = true;
+  saveMessage.value = '';
+  try {
+    await api.put('/users/me/materials', { material_ids: selectedMaterialIds.value });
+    const mineMaterialRes = await api.get('/materials/mine');
+    selectedMaterialIds.value = mineMaterialRes.data.map((item: any) => item.materialId);
+    saveMessage.value = '已保存';
+  } catch (e: any) {
+    saveMessage.value = e.response?.data?.message || '保存失败，请重试';
+  } finally {
+    savingMaterials.value = false;
+  }
+}
+
+onMounted(load);
 </script>
 
 <style scoped>
 .mine {
   padding-top: 46px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: #f7f8fa;
 }
 .content {
   padding: 16px;
+}
+.state {
+  text-align: center;
+  padding: 120px 16px 0;
+  color: #646566;
 }
 .actions {
   margin-top: 24px;

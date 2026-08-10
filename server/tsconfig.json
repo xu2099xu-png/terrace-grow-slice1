@@ -17,5 +17,5 @@
     "noImplicitAny": false,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*", "prisma/**/*", "test/**/*"]
+  "include": ["src/**/*", "prisma/**/*", "scripts/**/*", "test/**/*"]
 }

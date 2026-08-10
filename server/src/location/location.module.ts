@@ -4,8 +4,10 @@ import { HttpLocationResolver } from './http-location.resolver';
 import { MockLocationResolver } from './mock-location.resolver';
 import { LocationController } from './location.controller';
 import { AppConfigService } from '../config/runtime-config';
+import { RegionsModule } from '../regions/regions.module';
 
 @Module({
+  imports: [RegionsModule],
   controllers: [LocationController],
   providers: [
     MockLocationResolver,
@@ -18,7 +20,10 @@ import { AppConfigService } from '../config/runtime-config';
         config: AppConfigService,
         mock: MockLocationResolver,
         http: HttpLocationResolver,
-      ): LocationResolver => config.value.locationResolver === 'mock' ? mock : http,
+      ): LocationResolver => {
+        if (config.value.locationProvider === 'off') return http;
+        return config.value.locationProvider === 'mock' ? mock : http;
+      },
     },
   ],
   exports: [LOCATION_RESOLVER],

@@ -4,7 +4,10 @@ Terrace Grow is a Vue 3 H5 application backed by a NestJS/Prisma modular
 monolith. Slices 1-3 cover governed crop recommendations, seasonal planning,
 materials, soil calculations, and planting lifecycle tracking. Slice 4 adds the
 configuration, validation, security, health, container, migration, and CI
-foundation required for repeatable production deployment.
+foundation required for repeatable production deployment. Slice 5 introduces a
+default-off grounded AI explanation sidepath that can explain already governed
+application facts without changing recommendation, seasonal, or lifecycle
+engine semantics.
 
 The repository is deployable, but its agricultural content is not launch-ready.
 The committed seed contains draft development fixtures only. Production never
@@ -41,7 +44,9 @@ for local schema iteration and is never part of production startup.
 Draft fixtures are visible only when both `APP_ENV=development` and
 `ALLOW_DRAFT_FIXTURES=true`. Test mode uses its own explicit fixture contract.
 Production rejects draft enablement, mock providers, and `SEASON_DATE` before
-the HTTP listener starts.
+the HTTP listener starts. AI explanations default to `off`; provider failures,
+daily provider caps, and disabled AI return rules-sourced responses without
+inventing agricultural facts.
 
 ## Configuration
 
@@ -65,10 +70,56 @@ All server environment variables are parsed by the centralized runtime config:
 | `RATE_LIMIT_GLOBAL_LIMIT` | `300` | Process-local global request limit |
 | `RATE_LIMIT_TTL_MS` | `60000` | Limiter window, 1000-3600000 ms |
 | `SEASON_DATE` | empty | Development/test-only deterministic date override |
+| `AI_PROVIDER` | `off` | `off`, non-production `mock`, or `openai_compatible` |
+| `AI_PROVIDER_BASE_URL` | empty | OpenAI-compatible base URL; production requires HTTPS when provider is enabled |
+| `AI_PROVIDER_API_KEY` | empty | Bearer token for the OpenAI-compatible provider |
+| `AI_PROVIDER_MODEL` | empty | Provider model name for `/chat/completions` |
+| `AI_PROVIDER_TIMEOUT_MS` | `5000` | Provider timeout, 100-30000 ms |
+| `AI_PROMPT_VERSION` | `slice5-v1` | Cache and prompt contract version |
+| `AI_EXPLANATION_CACHE_TTL_SECONDS` | `86400` | Validated-answer cache TTL, 60-2592000 seconds |
+| `AI_DAILY_PROVIDER_CALL_CAP` | `20` | Per-user Asia/Shanghai daily provider-call cap |
+| `AI_ENDPOINT_LIMIT` | `20` | Per-user AI endpoint fixed-window limit |
+| `AI_ENDPOINT_TTL_MS` | `60000` | AI endpoint limiter window, 1000-3600000 ms |
 
 Provider values may be absent in production; the adapters degrade to unavailable
 facts rather than inventing agricultural facts. Never commit a real `.env` or
 provider credential.
+
+## Grounded AI Explanations
+
+`POST /api/ai/ask` is authenticated and accepts only typed agricultural
+contexts:
+
+- `perennial_plan`: `question`, `crop_id`, optional
+  `selected_container_type_id`, optional `selected_variety_id`
+- `seasonal_item`: `question`, `city_code`, `crop_id`
+- `planting_now`: `question`, `planting_id`
+
+The public response shape is fixed:
+
+```json
+{
+  "status": "answered",
+  "answer": "plain text",
+  "source": "ai",
+  "cache_hit": false,
+  "citations": [{ "fact_id": "crop.name", "label": "作物", "value": "蓝莓", "unit": null }],
+  "warnings": []
+}
+```
+
+`status` is one of `answered`, `disabled`, `provider_unavailable`, or
+`insufficient_data`. `source` is only `ai` or `rules`; provider success and cache
+hits are both `answered` with `source=ai`, and `cache_hit` distinguishes them.
+With `AI_PROVIDER=off`, the service does not serve cached AI responses and uses
+rules output after context resolution. Production with no approved agricultural
+context returns `insufficient_data` with an empty answer and no citations.
+
+The OpenAI-compatible adapter posts to
+`AI_PROVIDER_BASE_URL/chat/completions` with Bearer auth, configured model,
+temperature `0`, `stream=false`, and JSON-object response format. CI and smoke
+tests do not depend on a real provider; they use contract fixtures or
+`AI_PROVIDER=off`.
 
 ## Verification
 
@@ -77,16 +128,21 @@ seed draft fixtures, and never target the development database.
 
 ```bash
 npm run test:all
+npm run test:slice5-gate
 npm run test:migration-upgrade
 npm run build
 npm run test:production-smoke
 ```
 
-`test:migration-upgrade` verifies the frozen Slice 2 database can upgrade to the
-current schema without losing representative user, terrace, or planting data,
-and that a second `migrate deploy` is idempotent. The production smoke creates a
-unique Compose project and volume, runs with `APP_ENV=production`, then removes
-all smoke resources.
+`test:migration-upgrade` verifies a fresh database to current, the frozen Slice
+2 database to current, and the Slice 4 candidate database from git SHA
+`853852d1d1c118f2f6765b280c4f0ef3d3299a29` to current without losing
+representative user, identity, terrace, planting, planting event, or material
+inventory data. Each path includes a second `migrate deploy` idempotency check.
+The production smoke creates a unique Compose project and volume, runs with
+`APP_ENV=production` and `AI_PROVIDER=off`, verifies draft content remains
+closed, verifies the AI sidepath returns `insufficient_data` without approved
+context, then removes all smoke resources.
 
 The latest clean-room run passed 50 server unit tests (33 frozen engine tests
 plus 17 configuration tests), 108 integration/gate tests, the API full-chain

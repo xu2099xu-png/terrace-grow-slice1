@@ -12,15 +12,11 @@ test('S3-E2E-01 seasonal happy path: recommendation list → 建议直播 → de
   await context.setGeolocation({ latitude: 39.9, longitude: 116.4 });
 
   await page.goto('/#/');
-  await expect(page.getByText('这个季节种什么').first()).toBeVisible();
-  await page.getByText('这个季节种什么').first().click();
+  await expect(page.getByText('北京市 · 北京市 · 海淀区')).toBeVisible({ timeout: 15000 });
 
-  // geolocation resolves to beijing (mock resolver) → seasons page
-  await page.waitForURL('**/#/seasons/now?city_code=beijing', { timeout: 15000 });
-
-  const lettuceCard = page.locator('.crop-card', { hasText: '生菜' });
+  const lettuceCard = page.getByTestId('seasonal-item').filter({ hasText: '生菜' });
   await expect(lettuceCard).toBeVisible({ timeout: 15000 });
-  await expect(lettuceCard.locator('.start-method')).toHaveText('建议直播');
+  await expect(lettuceCard.getByText('建议直播')).toBeVisible();
 
   // Open unified crop detail without losing the recommendation context.
   await lettuceCard.click();

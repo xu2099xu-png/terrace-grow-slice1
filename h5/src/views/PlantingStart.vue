@@ -2,14 +2,20 @@
   <div class="planting-start">
     <van-nav-bar title="开始种植" fixed left-arrow @click-left="goBack" />
 
-    <div v-if="loadError" class="content">
+    <div v-if="loading" class="loading">
+      <van-loading type="spinner" color="#1989fa" />
+      <p>加载中…</p>
+    </div>
+
+    <div v-else-if="loadError" class="content">
       <van-empty description="数据加载失败，请返回重试" />
       <div class="actions">
-        <van-button type="primary" block round @click="goBack">返回</van-button>
+        <van-button block round @click="goBack">返回</van-button>
+        <van-button type="primary" block round @click="load">重试</van-button>
       </div>
     </div>
 
-    <div class="content" v-else-if="!loading">
+    <div class="content" v-else>
       <h2>确认开始种植</h2>
       <van-cell-group inset>
         <van-cell title="作物" :value="cropName || '—'" />
@@ -28,7 +34,14 @@
       </van-cell-group>
 
       <div class="actions">
-        <van-button type="success" block round :disabled="!canSubmit" @click="submit">
+        <van-button
+          type="success"
+          block
+          round
+          :loading="submitting"
+          :disabled="!canSubmit || submitting"
+          @click="submit"
+        >
           确认开始种植
         </van-button>
       </div>
@@ -69,6 +82,7 @@ const maxDate = new Date(today.getFullYear() + 1, 11, 31);
 const startDate = ref(formatDate(today));
 const showPicker = ref(false);
 const loading = ref(true);
+const submitting = ref(false);
 
 const canSubmit = computed(() => !!cropName.value && !!containerName.value && !!startDate.value);
 
@@ -89,11 +103,12 @@ function goBack() {
 }
 
 async function submit() {
+  if (submitting.value) return;
   if (!canSubmit.value) {
     showToast('数据未就绪，请稍后重试');
     return;
   }
-  loading.value = true;
+  submitting.value = true;
   try {
     const mine = await api.get('/terraces/mine');
     const terrace = mine.data;
@@ -117,11 +132,16 @@ async function submit() {
   } catch (e: any) {
     showToast(e.response?.data?.message || '开始种植失败');
   } finally {
-    loading.value = false;
+    submitting.value = false;
   }
 }
 
-onMounted(async () => {
+async function load() {
+  loading.value = true;
+  loadError.value = false;
+  cropName.value = '';
+  varietyName.value = '';
+  containerName.value = '';
   try {
     const [cropsRes, planRes] = await Promise.all([
       api.get('/crops?life_type=perennial'),
@@ -156,7 +176,9 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
-});
+}
+
+onMounted(load);
 
 function containerLabel(plan: any): string {
   const types = [...(plan.container?.preferredTypes || []), ...(plan.container?.acceptableTypes || [])];
@@ -173,5 +195,12 @@ function containerLabel(plan: any): string {
 }
 .actions {
   margin-top: 24px;
+}
+.actions > * + * {
+  margin-top: 12px;
+}
+.loading {
+  text-align: center;
+  padding-top: 120px;
 }
 </style>

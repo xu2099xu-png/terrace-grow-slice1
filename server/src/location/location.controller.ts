@@ -17,6 +17,9 @@ export class LocationController {
   @Throttle({ default: { limit: 60, ttl: 60000 } })
   @Post('resolve')
   async resolve(@Body() body: ResolveLocationDto) {
+    if (this.locationResolver.resolveDistrict) {
+      return this.locationResolver.resolveDistrict(body.lat, body.lng);
+    }
     return this.locationResolver.resolveCity(body.lat, body.lng);
   }
 

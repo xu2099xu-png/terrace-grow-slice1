@@ -1,106 +1,102 @@
 <template>
   <div class="home">
-    <van-nav-bar title="露台种植" fixed />
+    <van-nav-bar title="长期种植" fixed />
     <div class="content">
-      <h1>开始你的露台种植</h1>
-      <p>选择作物，测光照 → 选品种 → 配土上盆 → 进入种植流程</p>
+      <h1>长期种植</h1>
+      <p>选择多年生作物，查看品种、环境要求与露台种植方案</p>
+      <div v-if="terraceLoaded && !hasTerrace" class="setup-callout">
+        <span>先创建露台档案，才能生成适合你的多年生方案</span>
+        <van-button size="small" type="primary" round @click="router.push('/terrace')">
+          创建露台档案
+        </van-button>
+      </div>
 
-      <!-- 季节入口（Slice 3） -->
-      <van-cell-group inset class="seasonal-entry">
-        <van-cell title="这个季节种什么" label="根据地区、当前日期和近期天气推荐可种作物" is-link @click="goSeasonal">
-          <template #icon><van-icon name="calendar-o" class="entry-icon" /></template>
-        </van-cell>
-      </van-cell-group>
-
-      <div class="crop-grid">
-        <van-card
-          title="蓝莓"
-          desc="多年生浆果，喜酸性土壤"
-          @click="goPlan('crop-blueberry')"
-        >
-          <template #footer>
-            <van-button size="small" type="primary" round>开始</van-button>
-          </template>
-        </van-card>
-
-        <van-card
-          title="葡萄"
-          desc="多年生藤本，适合露台盆栽搭架"
-          @click="goPlan('crop-grape')"
-        >
-          <template #footer>
-            <van-button size="small" type="success" round>开始</van-button>
-          </template>
-        </van-card>
+      <div v-if="cropLoading" class="state">
+        <van-loading type="spinner" color="#1989fa" />
+        <p>加载作物中…</p>
+      </div>
+      <div v-else-if="cropError" class="state">
+        <van-empty description="作物列表加载失败" />
+        <van-button round block @click="loadCrops">重试</van-button>
+      </div>
+      <van-empty v-else-if="perennialCrops.length === 0" description="暂无多年生作物" />
+      <div v-else class="crop-grid">
+        <PlantCard
+          v-for="crop in perennialCrops"
+          :key="crop.id"
+          :crop="crop"
+          :command="commandText"
+          :disabled="!terraceLoaded"
+          @select="goDetail(crop.id)"
+        />
       </div>
     </div>
-
-    <!-- 定位失败 → 数据驱动城市选择（AC-02/AC-30） -->
-    <van-popup v-model:show="showCityPicker" position="bottom" round>
-      <van-nav-bar title="选择城市" />
-      <div class="city-list">
-        <van-cell
-          v-for="c in cities"
-          :key="c.city_code"
-          :title="c.city_name"
-          is-link
-          @click="pickCity(c.city_code)"
-        />
-        <van-empty v-if="!cities.length" description="暂无可选城市" />
-      </div>
-    </van-popup>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { showToast } from 'vant';
 import api from '../api/client';
+import { fetchCrops, type CropSummary } from '../api/catalog';
+import PlantCard from '../components/plants/PlantCard.vue';
 
 const router = useRouter();
-const showCityPicker = ref(false);
-const cities = ref<{ city_code: string; city_name: string }[]>([]);
+const terraceLoaded = ref(false);
+const terraceProfile = ref<any>(null);
+const cropLoading = ref(false);
+const cropError = ref(false);
+const perennialCrops = ref<CropSummary[]>([]);
 
-function goPlan(cropId: string) {
-  router.push(`/plan/${cropId}`);
+const hasTerrace = computed(() => !!terraceProfile.value);
+const commandText = computed(() => (!terraceLoaded.value ? '检查中' : '查看详情'));
+
+function terraceQuery(): Record<string, string> {
+  const terrace = terraceProfile.value;
+  if (!terrace) return {};
+  const query: Record<string, string> = {};
+  const adminCode = terrace.region?.admin_code || (!terrace.needsDistrictConfirmation ? terrace.regionAdminCode : '');
+  if (adminCode) query.admin_code = String(adminCode);
+  if (terrace.cityCode) query.city_code = String(terrace.cityCode);
+  return query;
 }
 
-async function goSeasonal() {
+function goDetail(cropId: string) {
+  if (!terraceLoaded.value) return;
+  router.push({
+    path: `/perennial/${cropId}`,
+    query: terraceQuery(),
+  });
+}
+
+async function loadTerrace() {
   try {
-    const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3000 });
-    });
-    const res = await api.post('/location/resolve', {
-      lat: pos.coords.latitude,
-      lng: pos.coords.longitude,
-    });
-    if (res.data?.city_code) {
-      router.push(`/seasons/now?city_code=${res.data.city_code}`);
-      return;
-    }
+    const res = await api.get('/terraces/mine');
+    terraceProfile.value = res.data || null;
   } catch (e) {
-    // geolocation unavailable / resolve failed → manual city pick (AC-02)
-  }
-  openCityPicker();
-}
-
-async function openCityPicker() {
-  showCityPicker.value = true;
-  if (!cities.value.length) {
-    try {
-      const res = await api.get('/location/supported-cities');
-      cities.value = res.data;
-    } catch (e) {
-      showToast('城市列表加载失败');
-    }
+    terraceProfile.value = null;
+  } finally {
+    terraceLoaded.value = true;
   }
 }
 
-function pickCity(cityCode: string) {
-  showCityPicker.value = false;
-  router.push(`/seasons/now?city_code=${cityCode}`);
+async function loadCrops() {
+  cropLoading.value = true;
+  cropError.value = false;
+  try {
+    perennialCrops.value = await fetchCrops('perennial');
+  } catch (e) {
+    perennialCrops.value = [];
+    cropError.value = true;
+  } finally {
+    cropLoading.value = false;
+  }
 }
+
+onMounted(() => {
+  void loadCrops();
+  void loadTerrace();
+});
 </script>
 
 <style scoped>
@@ -108,7 +104,7 @@ function pickCity(cityCode: string) {
   padding-top: 46px;
 }
 .content {
-  padding: 24px;
+  padding: 24px 16px;
   text-align: center;
 }
 h1 {
@@ -119,23 +115,39 @@ p {
   color: #666;
   margin-bottom: 24px;
 }
-.seasonal-entry {
-  margin-bottom: 24px;
+.setup-callout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   text-align: left;
+  background: #fff7e6;
+  color: #8a5a00;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.4;
 }
-.entry-icon {
-  font-size: 18px;
-  margin-right: 4px;
-  color: #1989fa;
+.setup-callout span {
+  flex: 1;
+}
+.state {
+  padding: 36px 0;
+}
+.state p {
+  margin: 10px 0 0;
 }
 .crop-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
   text-align: left;
 }
-.city-list {
-  max-height: 60vh;
-  overflow-y: auto;
+
+@media (max-width: 420px) {
+  .crop-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

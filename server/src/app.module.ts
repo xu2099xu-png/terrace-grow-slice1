@@ -12,11 +12,13 @@ import { SoilModule } from './soil/soil.module';
 import { PlantingsModule } from './plantings/plantings.module';
 import { SeasonsModule } from './seasons/seasons.module';
 import { LocationModule } from './location/location.module';
+import { SeasonalHomeModule } from './seasonal-home/seasonal-home.module';
 import { AuthGuard } from './auth/auth.guard';
 import { RuntimeConfigModule } from './config/runtime-config.module';
 import { AppConfigService } from './config/runtime-config';
 import { HealthModule } from './health/health.module';
 import { clientIpTracker } from './rate-limit/client-tracker';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -51,7 +53,9 @@ import { clientIpTracker } from './rate-limit/client-tracker';
     PlantingsModule,
     SeasonsModule,
     LocationModule,
+    SeasonalHomeModule,
     HealthModule,
+    AiModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

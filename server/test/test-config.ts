@@ -25,7 +25,8 @@ export function productionTestConfig(
     JWT_SECRET: 'slice4-production-test-secret-value-0001',
     CORS_ORIGINS: 'https://terrace.test',
     LOCATION_RESOLVER: 'http',
-    WEATHER_PROVIDER: 'http',
+    LOCATION_PROVIDER: 'off',
+    WEATHER_PROVIDER: 'off',
     SEASON_DATE: undefined,
     ...overrides,
   });

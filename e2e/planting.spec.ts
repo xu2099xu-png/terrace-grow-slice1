@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { createLowSunTerrace, createSunnyTerrace } from './helpers/slice6-flows';
 
 /**
  * S2-E2E-01 — Happy path.
@@ -7,24 +8,11 @@ import { test, expect } from '@playwright/test';
  * → action still completed.
  */
 test('S2-E2E-01 happy path: grape plan to persistent current stage', async ({ page }) => {
-  await page.goto('/#/terrace');
-  await page.locator('input').first().fill('beijing');
-  await page.getByRole('button', { name: '下一步' }).click();
-  await expect(page.getByText('露台日照情况')).toBeVisible();
-  await page.getByText('阳光充足（大部分白天都有阳光）').click();
-  await page.getByRole('button', { name: '下一步' }).click();
-  await expect(page.getByText('露台是否淋雨？')).toBeVisible();
-  await page.getByText('会淋到雨').click();
-  await page.getByRole('button', { name: '完成' }).click();
-  // wizard navigates to blueberry plan; wait for it to settle before leaving
-  await page.waitForURL('**/#/plan/crop-blueberry');
+  await createSunnyTerrace(page, 'crop-blueberry');
 
-  // Home offers grape entry (reload to guarantee the SPA re-mounts Home).
-  await page.goto('/#/');
-  await page.reload();
-  await expect(page.getByText('葡萄').first()).toBeVisible();
-  await page.getByText('葡萄').first().click();
-  await page.waitForURL('**/#/plan/crop-grape');
+  // Open grape plan with the same persisted terrace profile.
+  await page.goto('/#/perennial/crop-grape/plan');
+  await page.waitForURL('**/#/perennial/crop-grape/plan');
 
   // Valid plan shows "开始种植".
   await expect(page.getByText('适合种植', { exact: false }).first()).toBeVisible({ timeout: 15000 });
@@ -59,28 +47,11 @@ test('S2-E2E-01 happy path: grape plan to persistent current stage', async ({ pa
  */
 test('S2-E2E-02 NO_MATCH: no start-planting button, no flow entry', async ({ page }) => {
   // Create terrace with north + rarely => LOW 0-1h => NO_MATCH.
-  await page.goto('/#/terrace');
-  await page.locator('input').first().fill('beijing');
-  await page.getByRole('button', { name: '下一步' }).click();
-  await expect(page.getByText('露台日照情况')).toBeVisible();
-  await page.getByText('我不太确定').click();
-  await page.getByRole('button', { name: '下一步' }).click();
-  await expect(page.getByText('辅助判断')).toBeVisible();
-  // auxiliary: north + rarely
-  await page.getByText('北', { exact: true }).click();
-  await page.getByText('很少', { exact: true }).click();
-  await page.getByRole('button', { name: '下一步' }).click();
-  await expect(page.getByText('露台是否淋雨？')).toBeVisible();
-  await page.getByText('会淋到雨').click();
-  await page.getByRole('button', { name: '完成' }).click();
-  await page.waitForURL('**/#/plan/crop-blueberry');
+  await createLowSunTerrace(page, 'crop-blueberry');
 
-  // Open grape plan (reload to guarantee SPA re-mounts Home).
-  await page.goto('/#/');
-  await page.reload();
-  await expect(page.getByText('葡萄').first()).toBeVisible();
-  await page.getByText('葡萄').first().click();
-  await page.waitForURL('**/#/plan/crop-grape');
+  // Open grape plan with the same persisted terrace profile.
+  await page.goto('/#/perennial/crop-grape/plan');
+  await page.waitForURL('**/#/perennial/crop-grape/plan');
 
   // Unsuitable shown, no start button.
   await expect(page.getByText('为什么暂不推荐')).toBeVisible({ timeout: 15000 });

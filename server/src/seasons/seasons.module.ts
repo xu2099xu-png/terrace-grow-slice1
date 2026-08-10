@@ -12,5 +12,6 @@ import { AuthModule } from '../auth/auth.module';
   ],
   controllers: [SeasonsController],
   providers: [SeasonsService, OptionalAuthGuard],
+  exports: [SeasonsService],
 })
 export class SeasonsModule {}
