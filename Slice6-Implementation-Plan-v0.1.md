@@ -1,6 +1,6 @@
 # Slice 6 Implementation Plan v0.1 - Region-First Seasonal Home
 
-> Status: DRAFT / NOT APPROVED FOR IMPLEMENTATION.
+> Status: APPROVED FOR IMPLEMENTATION.
 > Aligned draft: `Slice6-Acceptance-Criteria-v0.1.md`.
 > Baseline: Slice 5 final frozen product commit `5b91de6af0194fdb437fb858834fd5d7c47833d4`.
 

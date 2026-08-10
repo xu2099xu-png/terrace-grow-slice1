@@ -1,6 +1,6 @@
 # Slice 6 Acceptance Criteria v0.1 - 全国区县位置、今日上下文与三 Tab IA
 
-> Status: DRAFT / NOT FROZEN
+> Status: FROZEN
 > Baseline: Slice 5 final frozen product commit `5b91de6af0194fdb437fb858834fd5d7c47833d4`
 
 Slice 5 has been externally declared PASS / FROZEN, and the final Slice 5
