@@ -99,14 +99,24 @@ function fail(message) {
     });
   });
   await page.goto(`${baseUrl}/#/`, { waitUntil: 'domcontentloaded' });
-  await page.getByText('定位未完成，请手动选择区县。').waitFor({ state: 'visible', timeout: 30000 });
+  await page.waitForURL(/#\/location/, { timeout: 30000 });
+  await page.getByRole('heading', { name: '选择用于时令推荐的区县' }).waitFor({ state: 'visible', timeout: 30000 });
+  await page.getByText('未授权定位', { exact: true }).waitFor({ state: 'visible', timeout: 30000 });
+  await page.getByText('浏览器未授权定位，请手动选择区县。').waitFor({ state: 'visible', timeout: 30000 });
   await page.getByTestId('region-picker').waitFor({ state: 'visible', timeout: 30000 });
   await page.getByTestId('province-option').filter({ hasText: '浙江省' }).click();
   await page.getByRole('tab', { name: '城市' }).click();
   await page.getByTestId('city-option').filter({ hasText: '杭州市' }).click();
   await page.getByRole('tab', { name: '区县' }).click();
   await page.getByTestId('district-option').filter({ hasText: '上城区' }).click();
+  await page.waitForURL((url) => !url.hash.startsWith('#/location'), { timeout: 30000 });
   await page.getByText('浙江省 · 杭州市 · 上城区').waitFor({ state: 'visible', timeout: 30000 });
+  await page.getByText('今日概览').waitFor({ state: 'visible', timeout: 30000 });
+  await page.getByText(/20\d{2}-\d{2}-\d{2} · 周/).waitFor({ state: 'visible', timeout: 30000 });
+  await page.getByText('天气暂不可用', { exact: true }).waitFor({ state: 'visible', timeout: 30000 });
+  if (await page.getByRole('link', { name: '和风天气/QWeather', exact: true }).count() !== 0) {
+    fail('QWeather attribution must not be visible while provider is off');
+  }
   const selected = await page.evaluate(() => JSON.parse(localStorage.getItem('terrace:selected-region') || 'null'));
   if (!selected || selected.admin_code !== '330102' || selected.name !== '上城区') {
     fail(`unexpected selected region ${JSON.stringify(selected)}`);
@@ -256,7 +266,9 @@ function fail(message) {
   await anchor.waitFor({ state: 'visible', timeout: 30000 });
   const href = await anchor.getAttribute('href');
   if (href !== 'https://www.qweather.com') fail(`unexpected QWeather href ${href}`);
-  const panelText = await page.locator('.weather-panel').innerText({ timeout: 30000 });
+  const weatherPanel = page.locator('.summary-card').filter({ hasText: '区县天气' }).first();
+  await weatherPanel.waitFor({ state: 'visible', timeout: 30000 });
+  const panelText = await weatherPanel.innerText({ timeout: 30000 });
   if (!panelText.includes('缓存')) fail('cache badge is not visible');
   if (!panelText.includes('杭州市气象台发布暴雨蓝色预警')) fail('warning headline is not visible');
   let lastIndex = -1;
