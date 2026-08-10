@@ -2,20 +2,26 @@
   <div class="terrace-wizard">
     <van-nav-bar title="创建露台档案" fixed left-arrow @click-left="goBack" />
 
-    <div v-if="step === 1" class="step">
-      <h2>您所在的区县？</h2>
-      <p class="hint">用于匹配气候区与需冷量估算</p>
-      <RegionPicker :selected-region="selectedRegion" @select="selectRegion" />
-      <div class="actions">
-        <van-button type="primary" block round @click="nextStep" :disabled="!selectedRegion">下一步</van-button>
-      </div>
-    </div>
+    <StepProgress :current="step" :items="steps" />
 
-    <div v-if="step === 2" class="step">
-      <h2>露台日照情况</h2>
-      <p class="hint">请选择最符合的一项</p>
+    <WizardStep
+      v-if="step === 1"
+      title="您所在的区县？"
+      hint="用于匹配气候区与需冷量估算"
+    >
+      <RegionPicker :selected-region="selectedRegion" @select="selectRegion" />
+      <template #actions>
+        <van-button type="primary" block round @click="nextStep" :disabled="!selectedRegion">下一步</van-button>
+      </template>
+    </WizardStep>
+
+    <WizardStep
+      v-if="step === 2"
+      title="露台日照情况？"
+      hint="请选择最符合的一项"
+    >
       <van-radio-group v-model="sunExposureLevel">
-        <van-cell-group inset>
+        <van-cell-group>
           <van-cell title="阳光充足（大部分白天都有阳光）" clickable @click="sunExposureLevel = 'LONG'">
             <template #right-icon>
               <van-radio name="LONG" />
@@ -43,15 +49,17 @@
           </van-cell>
         </van-cell-group>
       </van-radio-group>
-      <div class="actions">
+      <template #actions>
         <van-button type="primary" block round @click="nextStep" :disabled="!sunExposureLevel">下一步</van-button>
-      </div>
-    </div>
+      </template>
+    </WizardStep>
 
-    <div v-if="step === 3" class="step">
-      <h2>辅助判断</h2>
-      <p class="hint">请根据实际情况选择，帮助我们更准确地估算</p>
-      <van-cell-group inset>
+    <WizardStep
+      v-if="step === 3"
+      title="朝向和日照时段？"
+      hint="保留这两个观察项，便于日照不确定时估算"
+    >
+      <van-cell-group>
         <van-cell title="露台朝向">
           <template #label>
             <van-radio-group v-model="orientation" direction="horizontal">
@@ -75,16 +83,18 @@
           </template>
         </van-cell>
       </van-cell-group>
-      <div class="actions">
+      <template #actions>
         <van-button type="primary" block round @click="nextStep" :disabled="!orientation || !timeObs">下一步</van-button>
-      </div>
-    </div>
+      </template>
+    </WizardStep>
 
-    <div v-if="step === 4" class="step">
-      <h2>露台是否淋雨？</h2>
-      <p class="hint">直接影响积水风险评估，请如实选择</p>
+    <WizardStep
+      v-if="step === 4"
+      title="露台是否淋雨？"
+      hint="直接影响积水风险评估，请如实选择"
+    >
       <van-radio-group v-model="rainExposed">
-        <van-cell-group inset>
+        <van-cell-group>
           <van-cell title="会淋到雨" clickable @click="rainExposed = true">
             <template #right-icon>
               <van-radio :name="true" />
@@ -97,10 +107,10 @@
           </van-cell>
         </van-cell-group>
       </van-radio-group>
-      <div class="actions">
+      <template #actions>
         <van-button type="primary" block round @click="submit" :disabled="rainExposed === null">完成</van-button>
-      </div>
-    </div>
+      </template>
+    </WizardStep>
 
     <div v-if="loading" class="loading">
       <van-loading type="spinner" color="#1989fa" />
@@ -115,6 +125,8 @@ import { useRoute, useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import api from '../api/client';
 import RegionPicker from '../components/RegionPicker.vue';
+import StepProgress from '../components/wizard/StepProgress.vue';
+import WizardStep from '../components/wizard/WizardStep.vue';
 import type { SelectedRegionMetadata } from '../api/region-selection';
 
 const router = useRouter();
@@ -127,29 +139,87 @@ const orientation = ref('');
 const timeObs = ref('');
 const rainExposed = ref<boolean | null>(null);
 const loading = ref(false);
+const steps = [
+  { index: 1, label: '地区' },
+  { index: 2, label: '光照' },
+  { index: 3, label: '朝向/时段' },
+  { index: 4, label: '避雨' },
+];
+const CANONICAL_CITY_CODES = new Set([
+  'beijing',
+  'tianjin',
+  'shanghai',
+  'hangzhou',
+  'nanjing',
+  'suzhou',
+  'ningbo',
+  'hefei',
+  'wuxi',
+  'guangzhou',
+  'shenzhen',
+  'fuzhou',
+  'xiamen',
+  'nanning',
+  'shijiazhuang',
+  'jinan',
+  'zhengzhou',
+]);
+const SAFE_RETURN_PATHS: Record<string, string> = {
+  mine: '/mine',
+  profile: '/mine',
+  seasonal: '/seasonal',
+  perennial: '/perennial',
+  '/mine': '/mine',
+  '/profile': '/mine',
+  '/seasonal': '/seasonal',
+  '/perennial': '/perennial',
+};
+
+function queryString(value: unknown): string {
+  if (Array.isArray(value)) return typeof value[0] === 'string' ? value[0] : '';
+  return typeof value === 'string' ? value : '';
+}
+
+function safeAdminCode(value: unknown): string {
+  const raw = queryString(value);
+  return /^\d{6}$/.test(raw) ? raw : '';
+}
+
+function safeCityCode(value: unknown): string {
+  const raw = queryString(value);
+  return CANONICAL_CITY_CODES.has(raw) ? raw : '';
+}
+
 const targetCropId = computed(() => {
-  const value = route.query.target_crop_id;
-  return typeof value === 'string' && value ? value : null;
+  const value = queryString(route.query.target_crop_id);
+  return value ? value : null;
 });
-const returnTarget = computed(() => {
-  const value = route.query.return_to;
-  return typeof value === 'string' && value === 'mine' ? 'mine' : null;
+const safeReturnPath = computed(() => SAFE_RETURN_PATHS[queryString(route.query.return_to)] || '/seasonal');
+const planContextQuery = computed(() => {
+  const query: Record<string, string> = {};
+  const varietyId = queryString(route.query.variety_id);
+  const adminCode = safeAdminCode(route.query.admin_code) || selectedRegion.value?.admin_code || '';
+  const city = safeCityCode(route.query.city_code);
+  if (varietyId) query.variety_id = varietyId;
+  if (adminCode) query.admin_code = adminCode;
+  if (city) query.city_code = city;
+  return query;
 });
 
 function goBack() {
   if (step.value > 1) {
     step.value--;
   } else {
-    router.push(returnTarget.value === 'mine' ? '/mine' : '/');
+    router.push(safeReturnPath.value);
   }
 }
 
 function nextStep() {
   if (step.value === 1) {
     step.value = 2; // district -> sunlight
-  } else if (step.value === 2 && sunExposureLevel.value === 'UNSURE') {
-    step.value = 3; // auxiliary questions for unsure sunlight
-  } else if (step.value === 2 || step.value === 3) {
+  } else if (step.value === 2) {
+    step.value = 3; // sunlight -> orientation/time observation
+  } else if (step.value === 3) {
     step.value = 4; // rain exposure is mandatory for all paths
   }
 }
@@ -181,9 +251,12 @@ async function submit() {
     await api.post('/terraces', payload);
 
     if (targetCropId.value) {
-      router.push(`/plan/${targetCropId.value}`);
+      router.push({
+        path: `/perennial/${encodeURIComponent(targetCropId.value)}/plan`,
+        query: planContextQuery.value,
+      });
     } else {
-      router.push('/mine');
+      router.push(safeReturnPath.value === '/seasonal' ? '/mine' : safeReturnPath.value);
     }
   } catch (e: any) {
     showToast(e.response?.data?.message || '出错了，请重试');
@@ -229,21 +302,9 @@ onMounted(async () => {
 <style scoped>
 .terrace-wizard {
   padding-top: 46px;
-}
-.step {
-  padding: 16px;
-}
-h2 {
-  font-size: 20px;
-  margin-bottom: 4px;
-}
-.hint {
-  color: #999;
-  font-size: 13px;
-  margin-bottom: 16px;
-}
-.actions {
-  margin-top: 24px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: #f7f8fa;
 }
 .loading {
   position: fixed;

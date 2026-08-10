@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { reactive } from 'vue';
 import * as Vant from 'vant';
+import { readFileSync } from 'node:fs';
 import SeasonalHome from './SeasonalHome.vue';
 import { SELECTED_REGION_STORAGE_KEY } from '../api/region-selection';
 
@@ -14,27 +15,6 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({ push: mocks.push }),
   useRoute: () => mocks.route,
 }));
-
-vi.mock('../components/RegionPicker.vue', async () => {
-  const { defineComponent, h } = await import('vue');
-  return {
-    default: defineComponent({
-    emits: ['select'],
-    setup(_, { emit }) {
-      return () => h('button', {
-        'data-testid': 'mock-region-picker',
-        onClick: () => emit('select', {
-          admin_code: '330102',
-          name: '上城区',
-          province_name: '浙江省',
-          city_name: '杭州市',
-          selected_at: '2026-08-10T00:00:00.000Z',
-        }),
-      }, '选择上城区');
-    },
-    }),
-  };
-});
 
 vi.mock('../api/client', () => ({
   default: {
@@ -74,33 +54,44 @@ const homePayload = {
     distance_km: null,
   },
   weather: {
-    status: 'unavailable',
-    source: null,
+    status: 'available',
+    source: 'qweather',
     observed_at: null,
-    updated_at: null,
+    updated_at: '2026-08-10T08:00:00.000Z',
     cache_hit: false,
-    attribution: { name: null, url: null, sources: [] },
-    summary: '',
-    temperature_current_c: null,
-    temperature_min_c: null,
-    temperature_max_c: null,
-    condition: null,
+    attribution: {
+      name: '和风天气/QWeather',
+      url: 'https://www.qweather.com',
+      sources: ['https://developer.qweather.com/attribution.html', '杭州市气象台'],
+    },
+    summary: '多云 26°C',
+    temperature_current_c: 26,
+    temperature_min_c: 22,
+    temperature_max_c: 30,
+    condition: '多云',
     precipitation_mm: null,
-    precipitation_probability_percent: null,
-    humidity_percent: null,
-    wind: null,
-    warnings: ['天气暂不可用'],
+    precipitation_probability_percent: 20,
+    humidity_percent: 72,
+    wind: '东南风',
+    warnings: [],
   },
   seasonal: {
     date: '2026-08-10',
     location_status: 'ok',
     climate_zone_code: 'east_china',
     climate_data_status: 'available',
-    weather_data_status: 'unavailable',
+    weather_data_status: 'available',
     has_profile: false,
     items: [{
       crop_id: 'crop-carrot',
       crop_name: '胡萝卜',
+      available_start_methods: ['direct_seed'],
+      season_status: 'in_window',
+      difficulty: 1,
+      warnings: [],
+    }, {
+      crop_id: 'crop-lettuce',
+      crop_name: '生菜',
       available_start_methods: ['direct_seed'],
       season_status: 'in_window',
       difficulty: 1,
@@ -110,154 +101,111 @@ const homePayload = {
   },
 };
 
-function installGeolocation(handler: (success: PositionCallback, error: PositionErrorCallback) => void) {
-  Object.defineProperty(navigator, 'geolocation', {
-    configurable: true,
-    value: {
-      getCurrentPosition: vi.fn(handler),
-    },
-  });
+const cropRows = [{
+  id: 'crop-carrot',
+  name: '胡萝卜',
+  lifeType: 'seasonal',
+  coverImage: '/assets/carrot.jpg',
+  harvestDaysMin: 60,
+  harvestDaysMax: 80,
+}, {
+  id: 'crop-lettuce',
+  name: '生菜',
+  lifeType: 'seasonal',
+  coverImage: null,
+}];
+
+function storeRegion() {
+  localStorage.setItem(SELECTED_REGION_STORAGE_KEY, JSON.stringify({
+    admin_code: '330102',
+    name: '上城区',
+    province_name: '浙江省',
+    city_name: '杭州市',
+    selected_at: '2026-08-10T00:00:00.000Z',
+  }));
 }
 
-async function expectManualPickerCanSelectDistrict(wrapper: ReturnType<typeof mount>, message: string) {
-  expect(wrapper.text()).toContain(message);
-  await wrapper.get('[data-testid="mock-region-picker"]').trigger('click');
-  await flushPromises();
-
-  expect(mockApi.get).toHaveBeenCalledWith('/seasonal/home?admin_code=330102');
-  expect(wrapper.text()).toContain('浙江省 · 杭州市 · 上城区');
+function mockHomeApis(payload = homePayload) {
+  mockApi.get.mockImplementation((url: string) => {
+    if (url === '/seasonal/home?admin_code=330102') return Promise.resolve({ data: payload });
+    if (url === '/crops?life_type=seasonal') return Promise.resolve({ data: cropRows });
+    return Promise.reject(new Error(`unexpected ${url}`));
+  });
 }
 
 describe('SeasonalHome.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
-    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
-    mocks.route = reactive({ query: {} as Record<string, string> });
+    mocks.route = reactive({ fullPath: '/', query: {} as Record<string, string> });
   });
 
-  it('resolves browser location, saves only display metadata, and shows QWeather attribution', async () => {
-    installGeolocation((success) => success({
-      coords: { latitude: 30.2, longitude: 120.1 },
-    } as GeolocationPosition));
-    mockApi.post.mockResolvedValueOnce({
-      data: {
-        admin_code: '330102',
-        name: '上城区',
-        level: 'district',
-        province_name: '浙江省',
-        city_name: '杭州市',
-      },
+  it('redirects to the standalone location picker when no district is selected', async () => {
+    const wrapper = mount(SeasonalHome, { global: { plugins: [Vant] }, attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('正在前往地区选择');
+    expect(mocks.push).toHaveBeenCalledWith({
+      path: '/location',
+      query: { return_to: '/' },
     });
-    mockApi.get.mockResolvedValueOnce({
-      data: {
-        ...homePayload,
-        weather: {
-          ...homePayload.weather,
-          status: 'available',
-          summary: '多云 26°C',
-          temperature_current_c: 26,
-          attribution: {
-            name: '和风天气/QWeather',
-            url: 'https://www.qweather.com',
-            sources: ['https://developer.qweather.com/attribution.html', '杭州市气象台'],
-          },
-        },
-      },
-    });
+    expect(mockApi.get).not.toHaveBeenCalled();
+  });
+
+  it('renders the closure hierarchy and joins seasonal crop display fields without N+1', async () => {
+    storeRegion();
+    mockHomeApis();
 
     const wrapper = mount(SeasonalHome, { global: { plugins: [Vant] }, attachTo: document.body });
     await flushPromises();
 
-    expect(mockApi.post).toHaveBeenCalledWith('/location/resolve', { lat: 30.2, lng: 120.1 });
+    expect(mockApi.get).toHaveBeenCalledTimes(2);
     expect(mockApi.get).toHaveBeenCalledWith('/seasonal/home?admin_code=330102');
+    expect(mockApi.get).toHaveBeenCalledWith('/crops?life_type=seasonal');
     expect(wrapper.text()).toContain('浙江省 · 杭州市 · 上城区');
-    expect(wrapper.text()).toContain('农历六月廿八');
-    const link = wrapper.get('a');
-    expect(link.text()).toBe('和风天气/QWeather');
-    expect(link.attributes('href')).toBe('https://www.qweather.com');
-    const stored = localStorage.getItem(SELECTED_REGION_STORAGE_KEY)!;
-    expect(stored).toContain('上城区');
-    expect(stored).not.toContain('30.2');
-    expect(stored).not.toContain('120.1');
+    expect(wrapper.text()).toContain('区县天气');
+    expect(wrapper.text()).toContain('今天');
+    expect(wrapper.text()).toContain('今日概览');
+    expect(wrapper.text()).toContain('今日推荐');
+    expect(wrapper.text()).toContain('胡萝卜');
+    expect(wrapper.text()).toContain('60-80 天采收');
+    expect(wrapper.findAll('.plant-card')).toHaveLength(2);
+    expect(wrapper.get('.plant-card img').attributes('src')).toBe('/assets/carrot.jpg');
+    expect(wrapper.get('.plant-card__media .van-icon').exists()).toBe(true);
   });
 
-  it('falls back to manual district selection when geolocation is denied', async () => {
-    installGeolocation((_success, error) => error({ code: 1, message: 'denied' } as GeolocationPositionError));
-    mockApi.get.mockResolvedValueOnce({ data: homePayload });
+  it('guards mobile overview and plant grid responsive structure', () => {
+    const homeSource = readFileSync('src/views/SeasonalHome.vue', 'utf8');
+    const gridSource = readFileSync('src/components/home/PlantCardGrid.vue', 'utf8');
 
-    const wrapper = mount(SeasonalHome, { global: { plugins: [Vant] }, attachTo: document.body });
-    await flushPromises();
-
-    await expectManualPickerCanSelectDistrict(wrapper, '定位未完成，请手动选择区县');
+    expect(homeSource).toContain('class="overview-grid"');
+    expect(homeSource).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))');
+    expect(homeSource).toContain('@media (max-width: 359px)');
+    expect(gridSource).toContain('grid-template-columns: repeat(3, minmax(0, 1fr))');
+    expect(gridSource).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))');
+    expect(gridSource).toContain('class="plant-card__media"');
   });
 
-  it('falls back to manual district selection when geolocation is unavailable in an insecure context', async () => {
-    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false });
-    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: undefined });
-    mockApi.get.mockResolvedValueOnce({ data: homePayload });
-
-    const wrapper = mount(SeasonalHome, { global: { plugins: [Vant] }, attachTo: document.body });
-    await flushPromises();
-
-    expect(mockApi.post).not.toHaveBeenCalled();
-    await expectManualPickerCanSelectDistrict(wrapper, '无法使用浏览器定位，请手动选择区县');
-  });
-
-  it('falls back to manual district selection when geolocation times out', async () => {
-    installGeolocation((_success, error) => error({ code: 3, message: 'timeout' } as GeolocationPositionError));
-    mockApi.get.mockResolvedValueOnce({ data: homePayload });
-
-    const wrapper = mount(SeasonalHome, { global: { plugins: [Vant] }, attachTo: document.body });
-    await flushPromises();
-
-    await expectManualPickerCanSelectDistrict(wrapper, '定位未完成，请手动选择区县');
-  });
-
-  it('falls back to manual district selection when location resolve returns null', async () => {
-    installGeolocation((success) => success({
-      coords: { latitude: 0, longitude: 0 },
-    } as GeolocationPosition));
-    mockApi.post.mockResolvedValueOnce({ data: null });
-    mockApi.get.mockResolvedValueOnce({ data: homePayload });
-
-    const wrapper = mount(SeasonalHome, { global: { plugins: [Vant] }, attachTo: document.body });
-    await flushPromises();
-
-    expect(mockApi.post).toHaveBeenCalledWith('/location/resolve', { lat: 0, lng: 0 });
-    await expectManualPickerCanSelectDistrict(wrapper, '定位暂未匹配到支持区县，请手动选择');
-  });
-
-  it('renders duplicate attribution sources and warnings in exact response order', async () => {
-    localStorage.setItem(SELECTED_REGION_STORAGE_KEY, JSON.stringify({
-      admin_code: '330102',
-      name: '上城区',
-      province_name: '浙江省',
-      city_name: '杭州市',
-      selected_at: '2026-08-10T00:00:00.000Z',
-    }));
+  it('keeps QWeather attribution duplicates visible and ordered', async () => {
+    storeRegion();
     const duplicatedSource = 'https://developer.qweather.com/attribution.html';
-    mockApi.get.mockResolvedValueOnce({
-      data: {
-        ...homePayload,
-        weather: {
-          ...homePayload.weather,
-          status: 'available',
-          summary: '多云',
-          attribution: {
-            name: '和风天气/QWeather',
-            url: 'https://www.qweather.com',
-            sources: [
-              duplicatedSource,
-              duplicatedSource,
-              duplicatedSource,
-              '杭州市气象台',
-              '国家预警信息发布中心',
-              '中国天气网',
-            ],
-          },
-          warnings: ['暴雨蓝色预警', '暴雨蓝色预警'],
+    mockHomeApis({
+      ...homePayload,
+      weather: {
+        ...homePayload.weather,
+        attribution: {
+          name: '和风天气/QWeather',
+          url: 'https://www.qweather.com',
+          sources: [
+            duplicatedSource,
+            duplicatedSource,
+            duplicatedSource,
+            '杭州市气象台',
+            '国家预警信息发布中心',
+            '中国天气网',
+          ],
         },
+        warnings: ['暴雨蓝色预警', '暴雨蓝色预警'],
       },
     });
 
@@ -276,5 +224,72 @@ describe('SeasonalHome.vue', () => {
       '暴雨蓝色预警',
       '暴雨蓝色预警',
     ]);
+  });
+
+  it('shows recoverable error state when seasonal home fails', async () => {
+    storeRegion();
+    mockApi.get.mockImplementation((url: string) => {
+      if (url === '/seasonal/home?admin_code=330102') {
+        return Promise.reject({ response: { data: { message: '今日时令加载失败' } } });
+      }
+      if (url === '/crops?life_type=seasonal') return Promise.resolve({ data: cropRows });
+      return Promise.reject(new Error(`unexpected ${url}`));
+    });
+
+    const wrapper = mount(SeasonalHome, { global: { plugins: [Vant] }, attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('今日时令加载失败');
+    expect(wrapper.text()).toContain('重试');
+    expect(wrapper.text()).toContain('重新选择区县');
+  });
+
+  it('shows empty recommendations and can route to location selection', async () => {
+    storeRegion();
+    mockHomeApis({
+      ...homePayload,
+      seasonal: {
+        ...homePayload.seasonal,
+        items: [],
+      },
+    });
+
+    const wrapper = mount(SeasonalHome, { global: { plugins: [Vant] }, attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('当前没有可种的作物');
+    await wrapper.findAll('button').find((button) => button.text().includes('更换区县'))!.trigger('click');
+
+    expect(mocks.push).toHaveBeenCalledWith({
+      path: '/location',
+      query: { return_to: '/' },
+    });
+  });
+
+  it('opens crop detail with continuous admin_code and optional canonical city_code', async () => {
+    storeRegion();
+    mockHomeApis({
+      ...homePayload,
+      seasonal: {
+        ...homePayload.seasonal,
+        items: [{
+          ...homePayload.seasonal.items[0],
+          city_code: 'hangzhou',
+        }],
+      },
+    });
+
+    const wrapper = mount(SeasonalHome, { global: { plugins: [Vant] }, attachTo: document.body });
+    await flushPromises();
+    await wrapper.get('[data-testid="seasonal-item"]').trigger('click');
+
+    expect(mocks.push).toHaveBeenCalledWith({
+      path: '/crops/crop-carrot',
+      query: {
+        admin_code: '330102',
+        city_code: 'hangzhou',
+        start_methods: 'direct_seed',
+      },
+    });
   });
 });

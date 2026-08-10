@@ -52,14 +52,25 @@ const mockApi = api as unknown as {
   post: ReturnType<typeof vi.fn>;
 };
 
+async function clickRadio(wrapper: ReturnType<typeof mount>, label: string) {
+  const radio = wrapper.findAll('[role="radio"]').find((item) => item.text().includes(label));
+  expect(radio, `radio ${label}`).toBeTruthy();
+  await radio!.trigger('click');
+}
+
 describe('TerraceWizard.vue city selection and return target', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     query = {};
   });
 
-  it('auto-advances after active district selection and returns to the target crop after submit', async () => {
-    query = { target_crop_id: 'crop-grape' };
+  it('auto-advances after active district selection and preserves plan context after submit', async () => {
+    query = {
+      target_crop_id: 'crop-grape',
+      variety_id: 'var-grape-kyoho',
+      admin_code: '330106',
+      city_code: 'hangzhou',
+    };
     mockApi.get.mockResolvedValueOnce({ data: null });
     mockApi.post.mockResolvedValueOnce({ data: { id: 'terrace-1' } });
 
@@ -73,6 +84,11 @@ describe('TerraceWizard.vue city selection and return target', () => {
     await wrapper.findAll('.van-cell').find((cell) => cell.text().includes('阳光充足'))!.trigger('click');
     await wrapper.get('.actions button').trigger('click');
     await flushPromises();
+    expect(wrapper.text()).toContain('朝向和日照时段');
+    await clickRadio(wrapper, '南');
+    await clickRadio(wrapper, '全天');
+    await wrapper.get('.actions button').trigger('click');
+    await flushPromises();
     await wrapper.findAll('.van-cell').find((cell) => cell.text().includes('会淋到雨'))!.trigger('click');
     await wrapper.get('.actions button').trigger('click');
     await flushPromises();
@@ -83,7 +99,14 @@ describe('TerraceWizard.vue city selection and return target', () => {
       rainExposed: true,
       sunExposureLevel: 'LONG',
     });
-    expect(push).toHaveBeenCalledWith('/plan/crop-grape');
+    expect(push).toHaveBeenCalledWith({
+      path: '/perennial/crop-grape/plan',
+      query: {
+        variety_id: 'var-grape-kyoho',
+        admin_code: '330106',
+        city_code: 'hangzhou',
+      },
+    });
   });
 
   it('prefills an existing district without auto-advancing and returns to mine by default', async () => {
@@ -98,6 +121,8 @@ describe('TerraceWizard.vue city selection and return target', () => {
           city_name: '上海市',
         },
         sunExposureLevel: 'MEDIUM',
+        sunOrientationRaw: 'south',
+        sunTimeObsRaw: 'allday',
         rainExposed: false,
       },
     });
@@ -108,6 +133,8 @@ describe('TerraceWizard.vue city selection and return target', () => {
 
     expect(wrapper.text()).toContain('上海市 上海市 黄浦区');
     expect(wrapper.text()).toContain('您所在的区县');
+    await wrapper.get('.actions button').trigger('click');
+    await flushPromises();
     await wrapper.get('.actions button').trigger('click');
     await flushPromises();
     await wrapper.get('.actions button').trigger('click');
@@ -146,6 +173,10 @@ describe('TerraceWizard.vue city selection and return target', () => {
     await wrapper.findAll('.van-cell').find((cell) => cell.text().includes('半天左右'))!.trigger('click');
     await wrapper.get('.actions button').trigger('click');
     await flushPromises();
+    await clickRadio(wrapper, '东');
+    await clickRadio(wrapper, '上午');
+    await wrapper.get('.actions button').trigger('click');
+    await flushPromises();
     await wrapper.findAll('.van-cell').find((cell) => cell.text().includes('基本淋不到'))!.trigger('click');
     await wrapper.get('.actions button').trigger('click');
     await flushPromises();
@@ -155,6 +186,35 @@ describe('TerraceWizard.vue city selection and return target', () => {
       regionAdminCode: '330102',
       rainExposed: false,
       sunExposureLevel: 'MEDIUM',
+    });
+  });
+
+  it('keeps assisted sunlight fields only for unsure sunlight', async () => {
+    mockApi.get.mockResolvedValueOnce({ data: null });
+    mockApi.post.mockResolvedValueOnce({ data: { id: 'terrace-1' } });
+
+    const wrapper = mount(TerraceWizard, { global: { plugins: [Vant] } });
+    await flushPromises();
+
+    await wrapper.get('[data-testid="mock-region-picker"] button').trigger('click');
+    await flushPromises();
+    await wrapper.findAll('.van-cell').find((cell) => cell.text().includes('我不太确定'))!.trigger('click');
+    await wrapper.get('.actions button').trigger('click');
+    await flushPromises();
+    await clickRadio(wrapper, '北');
+    await clickRadio(wrapper, '很少');
+    await wrapper.get('.actions button').trigger('click');
+    await flushPromises();
+    await wrapper.findAll('.van-cell').find((cell) => cell.text().includes('基本淋不到'))!.trigger('click');
+    await wrapper.get('.actions button').trigger('click');
+    await flushPromises();
+
+    expect(mockApi.post).toHaveBeenCalledWith('/terraces', {
+      name: '我的露台',
+      regionAdminCode: '330102',
+      rainExposed: false,
+      sunOrientationRaw: 'north',
+      sunTimeObsRaw: 'rarely',
     });
   });
 
@@ -168,5 +228,43 @@ describe('TerraceWizard.vue city selection and return target', () => {
     await wrapper.find('.van-nav-bar__left').trigger('click');
 
     expect(push).toHaveBeenCalledWith('/mine');
+  });
+
+  it('filters unsafe return_to and non-canonical city_code from navigation context', async () => {
+    query = {
+      target_crop_id: 'crop-grape',
+      admin_code: 'not-a-code',
+      city_code: 'evil-city',
+      return_to: 'https://example.invalid',
+    };
+    mockApi.get.mockResolvedValueOnce({ data: null });
+    mockApi.post.mockResolvedValueOnce({ data: { id: 'terrace-1' } });
+
+    const wrapper = mount(TerraceWizard, { global: { plugins: [Vant] } });
+    await flushPromises();
+
+    await wrapper.find('.van-nav-bar__left').trigger('click');
+    expect(push).toHaveBeenCalledWith('/seasonal');
+    push.mockClear();
+
+    await wrapper.get('[data-testid="mock-region-picker"] button').trigger('click');
+    await flushPromises();
+    await wrapper.findAll('.van-cell').find((cell) => cell.text().includes('阳光充足'))!.trigger('click');
+    await wrapper.get('.actions button').trigger('click');
+    await flushPromises();
+    await clickRadio(wrapper, '南');
+    await clickRadio(wrapper, '全天');
+    await wrapper.get('.actions button').trigger('click');
+    await flushPromises();
+    await wrapper.findAll('.van-cell').find((cell) => cell.text().includes('会淋到雨'))!.trigger('click');
+    await wrapper.get('.actions button').trigger('click');
+    await flushPromises();
+
+    expect(push).toHaveBeenCalledWith({
+      path: '/perennial/crop-grape/plan',
+      query: {
+        admin_code: '330102',
+      },
+    });
   });
 });

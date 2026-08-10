@@ -107,6 +107,23 @@ export interface SeasonalRecommendationItem {
   weather_assessment?: string;
   difficulty?: number;
   warnings?: string[];
+  city_code?: string;
+}
+
+export interface SeasonalCropSummary {
+  id: string;
+  name: string;
+  latinName?: string | null;
+  lifeType?: string;
+  familyUse?: number | null;
+  yieldLevel?: number | null;
+  harvestDaysMin?: number | null;
+  harvestDaysMax?: number | null;
+  containerFriendly?: boolean | null;
+  recommendedStartMethod?: string | null;
+  startMethodNote?: string | null;
+  coverImage?: string | null;
+  environmentRequirement?: Array<Record<string, unknown>>;
 }
 
 function buildRegionUrl(level: RegionLevel, parentAdminCode?: string | null): string {
@@ -136,6 +153,11 @@ export async function resolveLocation(lat: number, lng: number): Promise<Resolve
 
 export async function fetchSeasonalHome(adminCode: string): Promise<SeasonalHomePayload> {
   const res = await api.get(`/seasonal/home?admin_code=${encodeURIComponent(adminCode)}`);
+  return res.data;
+}
+
+export async function fetchSeasonalCrops(): Promise<SeasonalCropSummary[]> {
+  const res = await api.get('/crops?life_type=seasonal');
   return res.data;
 }
 

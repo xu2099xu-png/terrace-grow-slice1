@@ -12,22 +12,11 @@
     </div>
 
     <div v-else-if="crop" class="content">
-      <van-cell-group inset title="基本信息">
-        <van-cell title="作物" :value="crop.name" />
-        <van-cell title="学名" :value="crop.latinName || '—'" />
-        <van-cell title="难度" :value="difficultyLabel" />
-        <van-cell title="开始方式" :value="startMethodLabel" />
-        <van-cell v-if="crop.startMethodNote" :title="crop.startMethodNote" />
-      </van-cell-group>
-
-      <van-cell-group v-if="crop.environmentRequirement?.length" inset title="环境要求">
-        <van-cell
-          v-for="env in crop.environmentRequirement"
-          :key="env.id"
-          :title="`${env.minSunHours}h 以上日照`"
-          :label="env.frostSensitive ? '怕霜冻，注意防寒' : '较耐寒'"
-        />
-      </van-cell-group>
+      <BasicInfo :crop="crop" :contextual-start-methods="contextualStartMethods" />
+      <VarietySelector v-model="selectedVarietyId" :varieties="varieties" />
+      <KeyFacts :crop="crop" />
+      <Environment :requirements="crop.environmentRequirement || []" />
+      <KnowledgeAccordion :crop="crop" />
 
       <van-cell-group v-if="calendars.length" :inset="true" :title="calendarTitle">
         <van-cell
@@ -37,26 +26,41 @@
           :label="`窗口 ${c.windowKey}`"
         />
       </van-cell-group>
+
+      <div v-if="crop.lifeType === 'perennial'" class="actions">
+        <van-button type="success" block round @click="goPlan">查看种植方案</van-button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import api from '../api/client';
+import {
+  fetchCropDetail,
+  fetchCropVarieties,
+  type CropSummary,
+  type VarietySummary,
+} from '../api/catalog';
+import BasicInfo from '../components/plants/BasicInfo.vue';
+import Environment from '../components/plants/Environment.vue';
+import KeyFacts from '../components/plants/KeyFacts.vue';
+import KnowledgeAccordion from '../components/plants/KnowledgeAccordion.vue';
+import VarietySelector from '../components/plants/VarietySelector.vue';
 
 const props = defineProps<{ id: string }>();
 const router = useRouter();
 const route = useRoute();
 const loading = ref(true);
 const error = ref('');
-const crop = ref<any>(null);
-const hasCityContext = computed(() => !!route.query.city_code);
+const crop = ref<CropSummary | null>(null);
+const varieties = ref<VarietySummary[]>([]);
+const selectedVarietyId = ref(queryString(route.query.variety_id));
+const hasCityContext = computed(() => !!queryString(route.query.city_code));
 const contextualStartMethods = computed(() => {
-  const queryValue = route.query.start_methods;
-  const raw = Array.isArray(queryValue) ? queryValue[0] : queryValue;
-  if (typeof raw !== 'string') return [];
+  const raw = queryString(route.query.start_methods);
+  if (!raw) return [];
   return raw
     .split(',')
     .filter((method) => method === 'direct_seed' || method === 'nursery_plant');
@@ -65,40 +69,52 @@ const contextualStartMethods = computed(() => {
 const calendarTitle = computed(() =>
   hasCityContext.value ? '播种窗口（本气候区）' : '播种窗口',
 );
+const calendars = computed(() => (crop.value?.sowingCalendars as any[]) || []);
 
-const difficultyLabel = computed(() => {
-  const d = crop.value?.difficulty;
-  return { 1: '新手友好', 2: '有点难度', 3: '较有挑战', 4: '有难度', 5: '高手向' }[d] || `难度${d}`;
-});
-const startMethodLabel = computed(() => {
-  if (contextualStartMethods.value.length > 0) {
-    const hasSeed = contextualStartMethods.value.includes('direct_seed');
-    const hasNursery = contextualStartMethods.value.includes('nursery_plant');
-    if (hasSeed && hasNursery) return '买苗 / 直播均可';
-    if (hasSeed) return '建议直播';
-    return '建议买苗';
-  }
-  const m = crop.value?.recommendedStartMethod;
-  return { nursery_plant: '建议买苗', direct_seed: '建议直播', either: '买苗 / 直播均可' }[m] || m || '—';
-});
-const calendars = computed(() => crop.value?.sowingCalendars || []);
+function queryString(value: unknown): string {
+  if (Array.isArray(value)) return typeof value[0] === 'string' ? value[0] : '';
+  return typeof value === 'string' ? value : '';
+}
 
 function methodLabel(m: string): string {
   return { nursery_plant: '买苗', direct_seed: '直播' }[m] || m;
+}
+
+function planQuery(): Record<string, string> {
+  const query: Record<string, string> = {};
+  const adminCode = queryString(route.query.admin_code);
+  const cityCode = queryString(route.query.city_code);
+  if (adminCode) query.admin_code = adminCode;
+  if (cityCode) query.city_code = cityCode;
+  if (selectedVarietyId.value) query.variety_id = selectedVarietyId.value;
+  return query;
+}
+
+function goPlan() {
+  router.push({
+    path: `/perennial/${props.id}/plan`,
+    query: planQuery(),
+  });
 }
 
 async function load() {
   loading.value = true;
   error.value = '';
   try {
-    // closure-6: scope sowing windows to the current climate zone when the
-    // user came from a seasonal recommendation (city_code in the query).
-    const query = route.query.city_code
-      ? `?city_code=${encodeURIComponent(String(route.query.city_code))}`
+    const cityCode = queryString(route.query.city_code);
+    const [detail, varietyRows] = await Promise.all([
+      fetchCropDetail(props.id, cityCode ? { city_code: cityCode } : {}),
+      fetchCropVarieties(props.id),
+    ]);
+    crop.value = detail;
+    varieties.value = varietyRows;
+    const routeVarietyId = queryString(route.query.variety_id);
+    selectedVarietyId.value = varietyRows.some((v) => v.id === routeVarietyId)
+      ? routeVarietyId
       : '';
-    const res = await api.get(`/crops/${props.id}${query}`);
-    crop.value = res.data;
   } catch (e: any) {
+    crop.value = null;
+    varieties.value = [];
     error.value = e.response?.data?.message || '加载失败';
   } finally {
     loading.value = false;
@@ -106,17 +122,27 @@ async function load() {
 }
 
 onMounted(load);
+watch(() => props.id, () => {
+  void load();
+});
 </script>
 
 <style scoped>
 .crop-detail {
   padding-top: 46px;
+  padding-bottom: 24px;
 }
 .loading, .error {
   text-align: center;
-  padding-top: 120px;
+  padding: 120px 16px 0;
 }
 .content {
   padding: 16px;
+}
+.content > * {
+  margin-bottom: 12px;
+}
+.actions {
+  padding: 4px 16px 16px;
 }
 </style>

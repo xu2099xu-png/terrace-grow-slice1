@@ -26,6 +26,12 @@ const mockApi = api as unknown as {
 const profile = {
   name: '南向露台',
   cityCode: 'beijing',
+  region: {
+    admin_code: '110101',
+    name: '东城区',
+    province_name: '北京市',
+    city_name: '北京市',
+  },
   sunHoursMin: 6,
   sunHoursMax: 9,
   sunConfidence: 'medium',
@@ -80,14 +86,68 @@ describe('Mine.vue', () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain('南向露台');
+    expect(wrapper.text()).toContain('北京市 · 北京市 · 东城区');
     expect(wrapper.text()).toContain('6–9h（较确定）');
     expect(wrapper.text()).toContain('我的材料');
     expect(wrapper.text()).toContain('泥炭');
     expect(wrapper.text()).toContain('基础基质');
     expect(wrapper.text()).toContain('蓝莓');
 
-    await wrapper.findAll('.van-cell').find((cell) => cell.text().includes('编辑露台档案'))!.trigger('click');
+    await wrapper.findAll('.van-cell').find((cell) => cell.text().includes('地区 / 档案'))!.trigger('click');
     expect(push).toHaveBeenCalledWith('/terrace?return_to=mine');
+  });
+
+  it('shows only explicit sun confidence and neutral placeholder for missing hours', async () => {
+    mockSuccessfulLoad({
+      profile: {
+        ...profile,
+        sunHoursMin: 2,
+        sunHoursMax: 4,
+        sunConfidence: 'low',
+      },
+      plantings: [],
+      mineMaterials: [],
+    });
+    const lowWrapper = mountMine();
+    await flushPromises();
+    expect(lowWrapper.text()).toContain('2–4h（不确定）');
+    lowWrapper.unmount();
+
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+    mockSuccessfulLoad({
+      profile: {
+        ...profile,
+        sunHoursMin: 3,
+        sunHoursMax: 5,
+        sunConfidence: undefined,
+      },
+      plantings: [],
+      mineMaterials: [],
+    });
+    const unknownWrapper = mountMine();
+    await flushPromises();
+    expect(unknownWrapper.text()).toContain('3–5h');
+    expect(unknownWrapper.text()).not.toContain('3–5h（较确定）');
+    unknownWrapper.unmount();
+
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+    mockSuccessfulLoad({
+      profile: {
+        ...profile,
+        sunHoursMin: null,
+        sunHoursMax: null,
+        sunConfidence: 'medium',
+      },
+      plantings: [],
+      mineMaterials: [],
+    });
+    const missingWrapper = mountMine();
+    await flushPromises();
+    expect(missingWrapper.text()).toContain('日照估算—');
+    expect(missingWrapper.text()).not.toContain('null–nullh');
+    expect(missingWrapper.text()).not.toContain('较确定');
   });
 
   it('shows create terrace CTA when profile is absent', async () => {

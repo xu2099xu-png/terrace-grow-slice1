@@ -11,8 +11,8 @@ test('S2-E2E-01 happy path: grape plan to persistent current stage', async ({ pa
   await createSunnyTerrace(page, 'crop-blueberry');
 
   // Open grape plan with the same persisted terrace profile.
-  await page.goto('/#/plan/crop-grape');
-  await page.waitForURL('**/#/plan/crop-grape');
+  await page.goto('/#/perennial/crop-grape/plan');
+  await page.waitForURL('**/#/perennial/crop-grape/plan');
 
   // Valid plan shows "开始种植".
   await expect(page.getByText('适合种植', { exact: false }).first()).toBeVisible({ timeout: 15000 });
@@ -50,8 +50,8 @@ test('S2-E2E-02 NO_MATCH: no start-planting button, no flow entry', async ({ pag
   await createLowSunTerrace(page, 'crop-blueberry');
 
   // Open grape plan with the same persisted terrace profile.
-  await page.goto('/#/plan/crop-grape');
-  await page.waitForURL('**/#/plan/crop-grape');
+  await page.goto('/#/perennial/crop-grape/plan');
+  await page.waitForURL('**/#/perennial/crop-grape/plan');
 
   // Unsuitable shown, no start button.
   await expect(page.getByText('为什么暂不推荐')).toBeVisible({ timeout: 15000 });

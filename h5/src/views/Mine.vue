@@ -12,70 +12,26 @@
     </div>
 
     <div v-else class="content">
-      <van-cell-group inset>
-        <template v-if="profile">
-          <van-cell title="露台名称" :value="profile.name || '—'" />
-          <van-cell title="所在城市" :value="profile.cityCode || '—'" />
-          <van-cell title="日照估算" :value="sunInfo" />
-          <van-cell title="气候区" :value="profile.climateZone || '—'" />
-          <van-cell title="编辑露台档案" is-link role="button" @click="router.push('/terrace?return_to=mine')" />
-        </template>
-        <van-empty v-else description="还没有露台档案">
-          <van-button round type="primary" @click="router.push('/terrace?return_to=mine')">创建露台档案</van-button>
-        </van-empty>
-      </van-cell-group>
+      <ProfileSummary
+        :profile="profile"
+        :sun-info="sunInfo"
+        @edit="openTerraceProfile"
+        @create="openTerraceProfile"
+      />
 
-      <van-cell-group inset title="我的材料" class="section">
-        <div v-if="!materials.length" class="inline-empty">暂无可选材料</div>
-        <van-checkbox-group v-else v-model="selectedMaterialIds">
-          <van-cell
-            v-for="material in materials"
-            :key="material.id"
-            :title="material.name"
-            :label="materialLabel(material)"
-            clickable
-            role="button"
-            tabindex="0"
-            :aria-label="materialToggleLabel(material)"
-            data-testid="material-row"
-            @click="toggleMaterial(material.id)"
-            @keydown.enter.prevent="toggleMaterial(material.id)"
-            @keydown.space.prevent="toggleMaterial(material.id)"
-          >
-            <template #right-icon>
-              <van-checkbox :name="material.id" @click.stop />
-            </template>
-          </van-cell>
-        </van-checkbox-group>
-        <div class="save-row">
-          <van-button
-            size="small"
-            round
-            type="primary"
-            :loading="savingMaterials"
-            :disabled="savingMaterials"
-            @click="saveMaterials"
-          >
-            保存材料
-          </van-button>
-          <span v-if="saveMessage" class="save-message">{{ saveMessage }}</span>
-        </div>
-      </van-cell-group>
+      <MaterialInventory
+        :materials="materials"
+        :selected-material-ids="selectedMaterialIds"
+        :saving="savingMaterials"
+        :message="saveMessage"
+        @toggle="toggleMaterial"
+        @save="saveMaterials"
+      />
 
-      <van-cell-group inset title="我的种植" class="section">
-        <van-cell v-if="!plantings.length" title="暂无种植记录" />
-        <van-cell
-          v-for="p in plantings"
-          :key="p.planting_id"
-          :title="p.crop_name + (p.variety_name ? ' / ' + p.variety_name : '')"
-          :label="plantingLabel(p)"
-          is-link
-          @click="router.push(`/plantings/${p.planting_id}`)"
-        />
-      </van-cell-group>
+      <PlantingCards :plantings="plantings" @open="openPlanting" />
 
       <div class="actions">
-        <van-button type="primary" block round @click="router.push('/')">返回首页</van-button>
+        <van-button type="primary" block round @click="router.push('/seasonal')">下一步：查看时令种植</van-button>
       </div>
     </div>
   </div>
@@ -85,6 +41,9 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../api/client';
+import ProfileSummary from '../components/profile/ProfileSummary.vue';
+import MaterialInventory from '../components/profile/MaterialInventory.vue';
+import PlantingCards from '../components/profile/PlantingCards.vue';
 
 const router = useRouter();
 const profile = ref<any>(null);
@@ -100,41 +59,16 @@ const sunInfo = computed(() => {
   if (!profile.value) return '—';
   const min = profile.value.sunHoursMin;
   const max = profile.value.sunHoursMax;
-  const conf = profile.value.sunConfidence === 'low' ? '（不确定）' : '（较确定）';
+  if (typeof min !== 'number' || typeof max !== 'number' || !Number.isFinite(min) || !Number.isFinite(max)) {
+    return '—';
+  }
+  const confidenceLabels: Record<string, string> = {
+    low: '（不确定）',
+    medium: '（较确定）',
+  };
+  const conf = confidenceLabels[profile.value.sunConfidence] || '';
   return `${min}–${max}h${conf}`;
 });
-
-function plantingLabel(p: any): string {
-  const statusMap: Record<string, string> = {
-    planned: '计划中',
-    active: '进行中',
-    established: '已定植完成',
-    lifecycle_unavailable: '流程暂不可用',
-  };
-  const stage = p.current_stage_name ? `当前阶段：${p.current_stage_name} · ` : '';
-  return `${stage}开始于 ${p.start_date} · ${statusMap[p.status] || p.status}`;
-}
-
-function materialLabel(material: any): string {
-  const groupLabel: Record<string, string> = {
-    base: '基础基质',
-    drainage: '排水透气',
-    organic: '有机改良',
-    retention: '保水材料',
-    mineral: '矿物材料',
-    fertilizer: '养分补充',
-  };
-  const parts = [
-    groupLabel[material.functionGroup] || material.functionGroup,
-    material.acidifying ? '酸性材料' : '',
-  ].filter(Boolean);
-  return parts.join(' · ') || undefined;
-}
-
-function materialToggleLabel(material: any): string {
-  const selected = selectedMaterialIds.value.includes(material.id);
-  return `${selected ? '取消选择' : '选择'}${material.name}`;
-}
 
 function toggleMaterial(materialId: string) {
   if (selectedMaterialIds.value.includes(materialId)) {
@@ -143,6 +77,14 @@ function toggleMaterial(materialId: string) {
     selectedMaterialIds.value = [...selectedMaterialIds.value, materialId];
   }
   saveMessage.value = '';
+}
+
+function openTerraceProfile() {
+  router.push('/terrace?return_to=mine');
+}
+
+function openPlanting(plantingId: string) {
+  router.push(`/plantings/${plantingId}`);
 }
 
 async function loadProfile() {
@@ -200,6 +142,9 @@ onMounted(load);
 <style scoped>
 .mine {
   padding-top: 46px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: #f7f8fa;
 }
 .content {
   padding: 16px;
@@ -207,26 +152,7 @@ onMounted(load);
 .state {
   text-align: center;
   padding: 120px 16px 0;
-  color: #666;
-}
-.section {
-  margin-top: 14px;
-}
-.inline-empty {
-  padding: 16px;
-  color: #999;
-  font-size: 14px;
-  text-align: center;
-}
-.save-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px 14px;
-}
-.save-message {
-  color: #666;
-  font-size: 13px;
+  color: #646566;
 }
 .actions {
   margin-top: 24px;

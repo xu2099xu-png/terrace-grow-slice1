@@ -16,7 +16,7 @@
         <router-view />
       </main>
       <van-tabbar v-if="showTabbar" v-model="activeTab" route safe-area-inset-bottom>
-        <van-tabbar-item replace to="/" icon="calendar-o">时令种植</van-tabbar-item>
+        <van-tabbar-item replace to="/seasonal" icon="calendar-o">时令种植</van-tabbar-item>
         <van-tabbar-item replace to="/perennial" icon="flower-o">长期种植</van-tabbar-item>
         <van-tabbar-item replace to="/mine" icon="user-o">我的</van-tabbar-item>
       </van-tabbar>
@@ -63,7 +63,7 @@ onMounted(bootstrap);
 
 <style>
 html, body, #app {
-  --app-mobile-max-width: 430px;
+  --app-mobile-max-width: 480px;
   height: 100%;
   margin: 0;
   background: #f7f8fa;
@@ -71,6 +71,7 @@ html, body, #app {
 .app-wrapper {
   min-height: 100%;
   box-sizing: border-box;
+  overflow-x: hidden;
 }
 .app-wrapper--tabbar {
   padding-bottom: calc(56px + env(safe-area-inset-bottom));
@@ -80,6 +81,8 @@ html, body, #app {
   max-width: var(--app-mobile-max-width);
   min-height: 100vh;
   margin: 0 auto;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 .app-state {
   min-height: 100vh;
@@ -95,7 +98,7 @@ html, body, #app {
   margin: 0;
   color: #646566;
 }
-@media (min-width: 431px) {
+@media (min-width: 481px) {
   .app-wrapper--mobile-shell .van-nav-bar.van-nav-bar--fixed,
   .app-wrapper--mobile-shell .van-tabbar.van-tabbar--fixed {
     left: 50% !important;

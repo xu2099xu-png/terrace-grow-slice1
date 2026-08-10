@@ -33,12 +33,14 @@ async function chooseMunicipalityDistrict(page: import('@playwright/test').Page)
 
 test('first-use denied location falls back to manual ordinary district seasonal home', async ({ page }) => {
   await denyGeolocation(page);
-  await page.goto('/#/');
+  await page.goto('/#/location?return_to=/seasonal');
 
-  await expect(page.getByText('定位未完成，请手动选择区县。')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('未授权定位', { exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('浏览器未授权定位，请手动选择区县。')).toBeVisible();
   await expect(page.getByTestId('region-picker')).toBeVisible();
   await chooseOrdinaryDistrict(page);
 
+  await page.waitForURL('**/#/seasonal');
   await expect(page.getByText('浙江省 · 杭州市 · 上城区')).toBeVisible({ timeout: 15000 });
   await expect(page.getByText(/2026-03-20 · 周/)).toBeVisible();
   await expect(page.getByText('天气暂不可用', { exact: true })).toBeVisible();
@@ -64,11 +66,12 @@ test('first-use denied location falls back to manual ordinary district seasonal 
 
 test('manual picker supports direct-controlled municipality without a fake city step', async ({ page }) => {
   await denyGeolocation(page);
-  await page.goto('/#/');
+  await page.goto('/#/location?return_to=/seasonal');
 
   await expect(page.getByTestId('region-picker')).toBeVisible({ timeout: 15000 });
   await chooseMunicipalityDistrict(page);
 
+  await page.waitForURL('**/#/seasonal');
   await expect(page.getByText('北京市 · 北京市 · 东城区')).toBeVisible({ timeout: 15000 });
   await expect(page.getByText(/2026-03-20 · 周/)).toBeVisible();
 });

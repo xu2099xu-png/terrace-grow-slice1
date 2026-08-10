@@ -2,10 +2,9 @@ import { test, expect } from '@playwright/test';
 import { chooseBeijingDistrict } from './helpers/slice6-flows';
 
 async function clearBrowserState(page: import('@playwright/test').Page) {
-  await page.goto('/#/');
-  await page.evaluate(() => {
-    localStorage.clear();
-    sessionStorage.clear();
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
   await page.goto('about:blank');
 }
@@ -29,16 +28,26 @@ test('baseline onboarding: fresh home creates identity and builds target grape t
   await page.goto('/#/perennial');
   await expect(page.getByRole('button', { name: /葡萄/ })).toBeVisible();
   await page.getByRole('button', { name: /葡萄/ }).click();
-  await page.waitForURL('**/#/terrace?target_crop_id=crop-grape');
+  await page.waitForURL('**/#/perennial/crop-grape**');
+  await expect(page.getByText('葡萄').first()).toBeVisible();
+  await page.getByRole('button', { name: '查看种植方案' }).click();
+  await page.waitForURL('**/#/perennial/crop-grape/plan**');
+  await expect(page.getByText('先创建露台档案，才能生成长期种植方案')).toBeVisible({ timeout: 15000 });
+  await page.getByRole('button', { name: '创建露台档案' }).click();
+  await page.waitForURL('**/#/terrace?target_crop_id=crop-grape**');
 
   await expect(page.getByText('您所在的区县？')).toBeVisible();
   await chooseBeijingDistrict(page);
   await page.getByText('阳光充足（大部分白天都有阳光）').click();
   await page.getByRole('button', { name: '下一步' }).click();
+  await expect(page.getByText('朝向和日照时段？')).toBeVisible();
+  await page.getByText('南', { exact: true }).click();
+  await page.getByText('全天', { exact: true }).click();
+  await page.getByRole('button', { name: '下一步' }).click();
   await page.getByText('会淋到雨').click();
   await page.getByRole('button', { name: '完成' }).click();
 
-  await page.waitForURL('**/#/plan/crop-grape');
+  await page.waitForURL('**/#/perennial/crop-grape/plan**');
   await expect(page.getByText('巨峰', { exact: false }).first()).toBeVisible({ timeout: 15000 });
   await expect(page.getByText('阳光玫瑰', { exact: false }).first()).toBeVisible();
   await expect(page.getByText('薄雾')).toHaveCount(0);

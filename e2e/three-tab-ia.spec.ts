@@ -26,6 +26,10 @@ test('three-tab IA starts on seasonal, navigates to perennial and mine, and keep
   await expect(tabbar.getByText('我的')).toBeVisible();
   await expect(page.getByText('浙江省 · 杭州市 · 上城区')).toBeVisible({ timeout: 15000 });
 
+  await tabbar.getByText('时令种植').click();
+  await expect(page).toHaveURL(/#\/seasonal$/);
+  await expect(page.getByText('浙江省 · 杭州市 · 上城区')).toBeVisible();
+
   await tabbar.getByText('长期种植').click();
   await expect(page).toHaveURL(/#\/perennial$/);
   await expect(page.getByText('选择多年生作物')).toBeVisible();
@@ -33,6 +37,9 @@ test('three-tab IA starts on seasonal, navigates to perennial and mine, and keep
   await tabbar.getByText('我的').click();
   await expect(page).toHaveURL(/#\/mine$/);
   await expect(page.getByText('我的').first()).toBeVisible();
+
+  await page.goto('/#/profile');
+  await expect(page).toHaveURL(/#\/mine$/);
 
   await page.goto('/#/seasons/now?city_code=beijing');
   await expect(page).toHaveURL(/#\/seasons\/now\?city_code=beijing$/);

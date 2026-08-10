@@ -4,9 +4,11 @@ import * as Vant from 'vant';
 import PerennialPlan from './PerennialPlan.vue';
 
 const push = vi.fn();
+let routeQuery: Record<string, string> = {};
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push, back: vi.fn() }),
+  useRoute: () => ({ query: routeQuery }),
 }));
 
 // mock the api client module entirely
@@ -25,6 +27,50 @@ const mockApi = api as unknown as {
   post: ReturnType<typeof vi.fn>;
   put: ReturnType<typeof vi.fn>;
 };
+
+function cropDetail(cropId: string) {
+  const names: Record<string, string> = {
+    'crop-blueberry': '蓝莓',
+    'crop-grape': '葡萄',
+  };
+  return {
+    id: cropId,
+    name: names[cropId] || cropId,
+    lifeType: 'perennial',
+    category: 'fruit',
+    difficulty: 3,
+    environmentRequirement: [],
+    sowingCalendars: [],
+  };
+}
+
+function cropVarieties(cropId: string) {
+  const byCrop: Record<string, { id: string; name: string }[]> = {
+    'crop-blueberry': [
+      { id: 'var-oneal', name: '奥尼尔' },
+      { id: 'var-misty', name: '薄雾' },
+    ],
+    'crop-grape': [{ id: 'var-grape-kyoho', name: '巨峰' }],
+  };
+  return byCrop[cropId] || [];
+}
+
+function mockCatalogAndMaterials(profile: any = { id: 'terrace-1' }) {
+  mockApi.get.mockImplementation((url: string) => {
+    if (url === '/terraces/mine') return Promise.resolve({ data: profile });
+    if (url.startsWith('/crops/') && url.endsWith('/varieties')) {
+      const cropId = url.split('/')[2];
+      return Promise.resolve({ data: cropVarieties(cropId) });
+    }
+    if (url.startsWith('/crops/')) {
+      const cropId = url.split('/')[2].split('?')[0];
+      return Promise.resolve({ data: cropDetail(cropId) });
+    }
+    if (url === '/materials') return Promise.resolve({ data: [] });
+    if (url === '/materials/mine') return Promise.resolve({ data: [] });
+    return Promise.reject(new Error(`unexpected get ${url}`));
+  });
+}
 
 function noMatchPlan() {
   return {
@@ -141,12 +187,12 @@ function deferred<T>() {
 describe('PerennialPlan.vue — NO_MATCH short-circuit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    routeQuery = {};
   });
 
   it('NO_MATCH: hides container, soil, and material-adjustment areas', async () => {
     mockApi.post.mockResolvedValueOnce({ data: noMatchPlan() });
-    mockApi.get.mockResolvedValueOnce({ data: [] }); // materials
-    mockApi.get.mockResolvedValueOnce({ data: [] }); // /materials/mine
+    mockCatalogAndMaterials();
 
     const wrapper = mount(PerennialPlan, {
       props: { cropId: 'crop-blueberry' },
@@ -159,16 +205,15 @@ describe('PerennialPlan.vue — NO_MATCH short-circuit', () => {
     expect(html).toContain('日照不足');
     expect(html).toContain('不建议');
     // container/soil/material-actions must NOT appear
-    expect(html).not.toContain('容器建议');
-    expect(html).not.toContain('配土方案');
+    expect(html).not.toContain('容器');
+    expect(html).not.toContain('配土');
     expect(html).not.toContain('查看/调整我的材料');
     expect(html).not.toContain('推荐品种');
   });
 
   it('MATCH: shows container, soil, and material-adjustment areas', async () => {
     mockApi.post.mockResolvedValueOnce({ data: matchPlan() });
-    mockApi.get.mockResolvedValueOnce({ data: [] }); // materials
-    mockApi.get.mockResolvedValueOnce({ data: [] }); // /materials/mine
+    mockCatalogAndMaterials();
 
     const wrapper = mount(PerennialPlan, {
       props: { cropId: 'crop-blueberry' },
@@ -178,10 +223,57 @@ describe('PerennialPlan.vue — NO_MATCH short-circuit', () => {
 
     const html = wrapper.html();
     expect(html).toContain('适合种植');
-    expect(html).toContain('容器建议');
-    expect(html).toContain('配土方案');
+    expect(html).toContain('已选植物');
+    expect(html).toContain('容器');
+    expect(html).toContain('尺寸');
+    expect(html).toContain('配土');
     expect(html).toContain('查看/调整我的材料');
     expect(html).toContain('推荐品种');
+  });
+
+  it('shows recommendation context from terrace profile when route query differs', async () => {
+    routeQuery = { admin_code: '130102', city_code: 'shijiazhuang' };
+    mockApi.post.mockResolvedValueOnce({ data: matchPlan() });
+    mockCatalogAndMaterials({
+      id: 'terrace-1',
+      cityCode: 'hangzhou',
+      regionAdminCode: '330102',
+      region: {
+        admin_code: '330102',
+        name: '上城区',
+        province_name: '浙江省',
+        city_name: '杭州市',
+      },
+    });
+
+    const wrapper = mount(PerennialPlan, {
+      props: { cropId: 'crop-blueberry' },
+      global: { plugins: [Vant] },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('浙江省 · 杭州市 · 上城区');
+    expect(wrapper.text()).not.toContain('shijiazhuang');
+    expect(wrapper.text()).not.toContain('130102');
+    expect(mockApi.get).toHaveBeenCalledWith('/crops/crop-blueberry?city_code=hangzhou');
+  });
+
+  it('uses neutral suitability class for unknown server suitability values', async () => {
+    mockApi.post.mockResolvedValueOnce({
+      data: { ...matchPlan(), suitability: 'pending_review' },
+    });
+    mockCatalogAndMaterials();
+
+    const wrapper = mount(PerennialPlan, {
+      props: { cropId: 'crop-blueberry' },
+      global: { plugins: [Vant] },
+    });
+    await flushPromises();
+
+    const status = wrapper.get('strong');
+    expect(status.text()).toBe('—');
+    expect(status.classes()).toContain('neutral');
+    expect(status.classes()).not.toContain('bad');
   });
 
   it('AI explanation sends current plan refs only after user submits', async () => {
@@ -198,8 +290,7 @@ describe('PerennialPlan.vue — NO_MATCH short-circuit', () => {
           warnings: [],
         },
       });
-    mockApi.get.mockResolvedValueOnce({ data: [] }); // materials
-    mockApi.get.mockResolvedValueOnce({ data: [] }); // /materials/mine
+    mockCatalogAndMaterials();
 
     const wrapper = mount(PerennialPlan, {
       props: { cropId: 'crop-blueberry' },
@@ -225,6 +316,7 @@ describe('PerennialPlan.vue — NO_MATCH short-circuit', () => {
   });
 
   it('reloads on crop prop change and ignores stale plan responses', async () => {
+    routeQuery = { admin_code: '130102', city_code: 'shijiazhuang' };
     const blueberry = deferred<{ data: ReturnType<typeof matchPlan> }>();
     mockApi.post.mockImplementation((url: string, body: any) => {
       if (url === '/recommendations/perennial' && body.crop_id === 'crop-blueberry') {
@@ -235,7 +327,7 @@ describe('PerennialPlan.vue — NO_MATCH short-circuit', () => {
       }
       return Promise.reject(new Error(`unexpected post ${url}`));
     });
-    mockApi.get.mockResolvedValue({ data: [] });
+    mockCatalogAndMaterials();
 
     const wrapper = mount(PerennialPlan, {
       props: { cropId: 'crop-blueberry' },
@@ -259,6 +351,77 @@ describe('PerennialPlan.vue — NO_MATCH short-circuit', () => {
     expect(wrapper.text()).not.toContain('奥尼尔');
 
     await wrapper.get('button.van-button--success').trigger('click');
-    expect(push).toHaveBeenCalledWith('/planting-start?crop_id=crop-grape&container_type_id=ct-clay-pot&variety_id=var-grape-kyoho');
+    expect(push).toHaveBeenCalledWith('/planting-start?crop_id=crop-grape&container_type_id=ct-clay-pot&variety_id=var-grape-kyoho&admin_code=130102&city_code=shijiazhuang');
+  });
+
+  it('passes selected variety id to existing recommendation endpoint when variety changes', async () => {
+    const updated = {
+      ...matchPlan(),
+      selected_variety_id: 'var-misty',
+      recommended_varieties: [
+        ...matchPlan().recommended_varieties,
+        {
+          varietyId: 'var-misty',
+          name: '薄雾',
+          score: 105,
+          reasons: ['服务端重新排序'],
+          traits: { chill_hours_min: 250, heat_tolerance: 4, shade_tolerance: 2 },
+        },
+      ],
+    };
+    mockApi.post
+      .mockResolvedValueOnce({
+        data: {
+          ...matchPlan(),
+          recommended_varieties: updated.recommended_varieties,
+        },
+      })
+      .mockResolvedValueOnce({ data: updated });
+    mockCatalogAndMaterials();
+
+    const wrapper = mount(PerennialPlan, {
+      props: { cropId: 'crop-blueberry' },
+      global: { plugins: [Vant] },
+    });
+    await flushPromises();
+
+    await wrapper.findAll('.van-cell').find((cell) => cell.text().includes('薄雾'))!.trigger('click');
+    await flushPromises();
+
+    expect(mockApi.post).toHaveBeenLastCalledWith('/recommendations/perennial', {
+      crop_id: 'crop-blueberry',
+      selected_container_type_id: 'ct-fabric-bag',
+      selected_variety_id: 'var-misty',
+    });
+  });
+
+  it('shows create-profile recovery state before recommendation when terrace profile is missing', async () => {
+    routeQuery = {
+      variety_id: 'var-oneal',
+      admin_code: '130102',
+      city_code: 'shijiazhuang',
+    };
+    mockCatalogAndMaterials(null);
+
+    const wrapper = mount(PerennialPlan, {
+      props: { cropId: 'crop-blueberry' },
+      global: { plugins: [Vant] },
+    });
+    await flushPromises();
+
+    expect(mockApi.get).toHaveBeenCalledWith('/terraces/mine');
+    expect(mockApi.post).not.toHaveBeenCalledWith('/recommendations/perennial', expect.anything());
+    expect(wrapper.text()).toContain('先创建露台档案');
+
+    await wrapper.get('button.van-button--primary').trigger('click');
+    expect(push).toHaveBeenCalledWith({
+      path: '/terrace',
+      query: {
+        target_crop_id: 'crop-blueberry',
+        variety_id: 'var-oneal',
+        admin_code: '130102',
+        city_code: 'shijiazhuang',
+      },
+    });
   });
 });

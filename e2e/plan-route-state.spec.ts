@@ -17,7 +17,13 @@ test('B-E2E-01 plan route crop change ignores stale previous response', async ({
     await route.continue();
   });
 
+  const blueberryRequest = page.waitForRequest((request) => (
+    request.url().includes('/api/recommendations/perennial') &&
+    request.method() === 'POST' &&
+    request.postDataJSON()?.crop_id === 'crop-blueberry'
+  ));
   await createSunnyTerrace(page);
+  await blueberryRequest;
   await expect(page.getByText('生成方案中')).toBeVisible();
   expect(sawBlueberryRequest).toBe(true);
 
@@ -29,11 +35,13 @@ test('B-E2E-01 plan route crop change ignores stale previous response', async ({
       request.postDataJSON()?.crop_id === 'crop-grape'
     );
   });
-  await page.goto('/#/plan/crop-grape');
+  await page.goto('/#/perennial/crop-grape/plan');
   await grapeResponse;
 
-  const grapeVariety = page.locator('.van-cell', { hasText: '巨峰 已选' }).first();
+  const varietyGroup = page.getByRole('radiogroup').first();
+  const grapeVariety = varietyGroup.locator('.van-cell', { hasText: '巨峰' }).first();
   await expect(grapeVariety).toBeVisible({ timeout: 15000 });
+  await expect(grapeVariety.getByRole('radio')).toBeChecked();
   await expect(page.getByText('奥尼尔')).toHaveCount(0);
 
   const staleBlueberryResponse = page.waitForResponse((res) => {
@@ -48,8 +56,9 @@ test('B-E2E-01 plan route crop change ignores stale previous response', async ({
   await staleBlueberryResponse;
   await page.waitForLoadState('networkidle');
 
-  await expect(page).toHaveURL(/#\/plan\/crop-grape$/);
+  await expect(page).toHaveURL(/#\/perennial\/crop-grape\/plan$/);
   await expect(grapeVariety).toBeVisible();
+  await expect(grapeVariety.getByRole('radio')).toBeChecked();
   await expect(page.getByText('奥尼尔')).toHaveCount(0);
 
   await page.getByRole('button', { name: '开始种植' }).click();

@@ -1,21 +1,14 @@
 import { test, expect, type Page } from '@playwright/test';
-import { createSunnyTerrace } from './helpers/slice6-flows';
+import { createSunnyTerrace, installFreshIdentity } from './helpers/slice6-flows';
 
 async function openGrapePlan(page: Page) {
-  await createSunnyTerrace(page);
-  await page.goto('/#/plan/crop-grape');
-  await page.waitForURL('**/#/plan/crop-grape');
+  await installFreshIdentity(page, 'ai-plan-e2e');
+  await createSunnyTerrace(page, 'crop-grape');
   await expect(page.getByRole('button', { name: '开始种植' })).toBeVisible({ timeout: 15000 });
 }
 
 async function authenticate(page: Page) {
-  const response = await page.request.post('/api/auth/anonymous', {
-    data: { device_id: `ai-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}` },
-  });
-  expect(response.status()).toBe(201);
-  const { token } = await response.json();
-  await page.goto('/#/');
-  await page.evaluate((value) => localStorage.setItem('token', value), token);
+  await installFreshIdentity(page, 'ai-e2e');
 }
 
 async function submitExplanation(page: Page, question: string) {
@@ -50,7 +43,9 @@ async function expectAnsweredAiResponse(response: Awaited<ReturnType<typeof subm
 
 test('S5-E2E-01 perennial plan explanation posts refs and renders cited response', async ({ page }) => {
   await openGrapePlan(page);
-  await expect(page.getByText('容器建议')).toBeVisible();
+  const containerGroup = page.locator('.van-cell-group', { hasText: '容器' }).first();
+  await expect(containerGroup.getByText('首选类型')).toBeVisible();
+  await expect(containerGroup.getByText('陶土盆').first()).toBeVisible();
 
   const response = await submitExplanation(page, '为什么推荐这个方案？');
   const body = response.request().postDataJSON();

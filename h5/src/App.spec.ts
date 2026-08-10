@@ -44,7 +44,7 @@ describe('App.vue three-tab IA', () => {
   it('keeps desktop content constrained to the mobile tool width', () => {
     const source = readFileSync('src/App.vue', 'utf8');
 
-    expect(source).toContain('--app-mobile-max-width: 430px');
+    expect(source).toContain('--app-mobile-max-width: 480px');
     expect(source).toContain('max-width: var(--app-mobile-max-width)');
     expect(source).toContain('.app-wrapper--mobile-shell .van-nav-bar.van-nav-bar--fixed');
     expect(source).toContain('.app-wrapper--mobile-shell .van-tabbar.van-tabbar--fixed');

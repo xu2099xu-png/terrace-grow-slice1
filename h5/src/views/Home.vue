@@ -3,7 +3,7 @@
     <van-nav-bar title="长期种植" fixed />
     <div class="content">
       <h1>长期种植</h1>
-      <p>选择多年生作物，测光照后查看适合度、品种、容器与配土方案</p>
+      <p>选择多年生作物，查看品种、环境要求与露台种植方案</p>
       <div v-if="terraceLoaded && !hasTerrace" class="setup-callout">
         <span>先创建露台档案，才能生成适合你的多年生方案</span>
         <van-button size="small" type="primary" round @click="router.push('/terrace')">
@@ -11,25 +11,24 @@
         </van-button>
       </div>
 
-      <div class="crop-grid">
-        <button
+      <div v-if="cropLoading" class="state">
+        <van-loading type="spinner" color="#1989fa" />
+        <p>加载作物中…</p>
+      </div>
+      <div v-else-if="cropError" class="state">
+        <van-empty description="作物列表加载失败" />
+        <van-button round block @click="loadCrops">重试</van-button>
+      </div>
+      <van-empty v-else-if="perennialCrops.length === 0" description="暂无多年生作物" />
+      <div v-else class="crop-grid">
+        <PlantCard
           v-for="crop in perennialCrops"
           :key="crop.id"
-          class="crop-card"
-          type="button"
+          :crop="crop"
+          :command="commandText"
           :disabled="!terraceLoaded"
-          :aria-disabled="!terraceLoaded"
-          :aria-label="`${crop.name}：${commandText}`"
-          @click="goPlan(crop.id)"
-        >
-          <span>
-            <strong>{{ crop.name }}</strong>
-            <small>{{ crop.desc }}</small>
-          </span>
-          <span class="crop-command" :class="`crop-command--${crop.theme}`">
-            {{ commandText }}
-          </span>
-        </button>
+          @select="goDetail(crop.id)"
+        />
       </div>
     </div>
   </div>
@@ -39,40 +38,65 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../api/client';
+import { fetchCrops, type CropSummary } from '../api/catalog';
+import PlantCard from '../components/plants/PlantCard.vue';
 
 const router = useRouter();
 const terraceLoaded = ref(false);
-const hasTerrace = ref(false);
-const perennialCrops = [
-  { id: 'crop-blueberry', name: '蓝莓', desc: '多年生浆果，喜酸性土壤', theme: 'blue' },
-  { id: 'crop-grape', name: '葡萄', desc: '多年生藤本，适合露台盆栽搭架', theme: 'green' },
-] as const;
-const commandText = computed(() => {
-  if (!terraceLoaded.value) return '检查中';
-  return hasTerrace.value ? '查看方案' : '先建档';
-});
+const terraceProfile = ref<any>(null);
+const cropLoading = ref(false);
+const cropError = ref(false);
+const perennialCrops = ref<CropSummary[]>([]);
 
-function goPlan(cropId: string) {
+const hasTerrace = computed(() => !!terraceProfile.value);
+const commandText = computed(() => (!terraceLoaded.value ? '检查中' : '查看详情'));
+
+function terraceQuery(): Record<string, string> {
+  const terrace = terraceProfile.value;
+  if (!terrace) return {};
+  const query: Record<string, string> = {};
+  const adminCode = terrace.region?.admin_code || (!terrace.needsDistrictConfirmation ? terrace.regionAdminCode : '');
+  if (adminCode) query.admin_code = String(adminCode);
+  if (terrace.cityCode) query.city_code = String(terrace.cityCode);
+  return query;
+}
+
+function goDetail(cropId: string) {
   if (!terraceLoaded.value) return;
-  if (!hasTerrace.value) {
-    router.push(`/terrace?target_crop_id=${encodeURIComponent(cropId)}`);
-    return;
-  }
-  router.push(`/plan/${cropId}`);
+  router.push({
+    path: `/perennial/${cropId}`,
+    query: terraceQuery(),
+  });
 }
 
 async function loadTerrace() {
   try {
     const res = await api.get('/terraces/mine');
-    hasTerrace.value = !!res.data;
+    terraceProfile.value = res.data || null;
   } catch (e) {
-    hasTerrace.value = false;
+    terraceProfile.value = null;
   } finally {
     terraceLoaded.value = true;
   }
 }
 
-onMounted(loadTerrace);
+async function loadCrops() {
+  cropLoading.value = true;
+  cropError.value = false;
+  try {
+    perennialCrops.value = await fetchCrops('perennial');
+  } catch (e) {
+    perennialCrops.value = [];
+    cropError.value = true;
+  } finally {
+    cropLoading.value = false;
+  }
+}
+
+onMounted(() => {
+  void loadCrops();
+  void loadTerrace();
+});
 </script>
 
 <style scoped>
@@ -108,61 +132,22 @@ p {
 .setup-callout span {
   flex: 1;
 }
+.state {
+  padding: 36px 0;
+}
+.state p {
+  margin: 10px 0 0;
+}
 .crop-grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 12px;
   text-align: left;
 }
-.crop-card {
-  width: 100%;
-  border: 0;
-  border-radius: 8px;
-  background: #fff;
-  padding: 16px;
-  min-height: 88px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  text-align: left;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
-}
-.crop-card:active {
-  background: #f7f8fa;
-}
-.crop-card:disabled {
-  opacity: 0.72;
-  cursor: wait;
-}
-.crop-card strong {
-  display: block;
-  color: #323233;
-  font-size: 17px;
-  line-height: 1.3;
-}
-.crop-card small {
-  display: block;
-  margin-top: 6px;
-  color: #969799;
-  font-size: 13px;
-  line-height: 1.4;
-}
-.crop-command {
-  flex: 0 0 auto;
-  min-width: 72px;
-  border-radius: 999px;
-  padding: 7px 12px;
-  color: #fff;
-  font-size: 13px;
-  line-height: 1;
-  text-align: center;
-  font-weight: 600;
-}
-.crop-command--blue {
-  background: #1989fa;
-}
-.crop-command--green {
-  background: #07c160;
+
+@media (max-width: 420px) {
+  .crop-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
