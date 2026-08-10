@@ -8,10 +8,10 @@
 > Slice 6 freeze docs commit:
 > `f00f08cb680e2c5e0238aae758aee11cc206e747`
 > Slice 6 product candidate:
-> `4f0e6429eb252364873508f8aab27664e1e003f5`
+> `cd6c62279e9587f160417d8180c0880e564b0e13`
 > PR: `#2`
-> Hosted CI: **SUCCESS**, run `31363101325`, head SHA
-> `4f0e6429eb252364873508f8aab27664e1e003f5`
+> Hosted CI: **SUCCESS**, run `31366428260`, job `93385691606`, head SHA
+> `cd6c62279e9587f160417d8180c0880e564b0e13`
 
 This report records implementation and execution evidence for the exact Slice 6
 product candidate above. It does not declare Slice 6 PASS/FROZEN; external audit
@@ -23,14 +23,14 @@ secrets, or raw user-private location coordinates.
 This section supersedes all earlier candidate references in the historical
 sections below. The only current Slice 6 product candidate is:
 
-**`4f0e6429eb252364873508f8aab27664e1e003f5`**
+**`cd6c62279e9587f160417d8180c0880e564b0e13`**
 
-Hosted CI run `31363101325` completed with **SUCCESS** for this candidate.
-This is not a Claude PASS/FROZEN declaration; external Claude audit remains a
-separate acceptance signal.
+Hosted CI run `31366428260`, job `93385691606`, completed with **SUCCESS** for
+this candidate. This is not a Claude PASS/FROZEN declaration; external Claude
+audit remains a separate acceptance signal.
 
 Final recorded gates for candidate
-`4f0e6429eb252364873508f8aab27664e1e003f5`:
+`cd6c62279e9587f160417d8180c0880e564b0e13`:
 
 | Gate | Result |
 | --- | --- |
@@ -42,9 +42,24 @@ Final recorded gates for candidate
 | Production Compose config | PASS |
 | Production image build | PASS |
 | Production smoke | PASS |
+| Exact hosted CI | PASS |
 
 H5 IA closure recorded for this final candidate:
 
+- Home removes the duplicate centered `PageHeader`; the complete canonical
+  district becomes the top entry point.
+- Home uses compact paired weather and today-calendar summaries.
+- The recommendation first row is moved earlier in the first-screen IA.
+- Responsive Home recommendations render as two columns at 320px and three
+  columns at 375px, 390px, and 414px.
+- Real visual checks recorded no horizontal overflow and no console errors for
+  the checked widths.
+- Unknown weather and season states fail neutral instead of implying a positive
+  or negative condition.
+- The frontend does not select sunlight facts from `environmentRequirement`;
+  plant light facts remain server/catalog supplied.
+- Server `available_start_methods` keep the frozen label mapping, and crop-wide
+  catalog harvest display remains preserved.
 - Unified long-term plant flow uses the canonical path sequence
   `/perennial` -> `/perennial/:plantId` -> `/perennial/:plantId/plan` ->
   `/planting-start`.
@@ -64,7 +79,7 @@ H5 IA closure recorded for this final candidate:
   return to the canonical plan path.
 - Plant card/detail image regions use server `coverImage` when present and a
   stable neutral placeholder when absent.
-- H5 component/unit result: 20 files / 76 tests passed.
+- H5 component/unit result: 20 files / 78 tests passed.
 - Isolated Playwright result: 16 / 16 tests passed.
 - Screenshot/overflow QA passed at 320px, 375px, 390px, 414px, and 480px.
   The 375px check recorded `clientWidth=375`, `scrollWidth=375`, `cards=3`,
@@ -86,8 +101,8 @@ Final scope-stop for this report:
 
 - Independent implementation and gate review result before external audit:
   Blocking = 0.
-- Hosted CI run `31363101325` completed successfully for product candidate
-  `4f0e6429eb252364873508f8aab27664e1e003f5`.
+- Hosted CI run `31366428260`, job `93385691606`, completed successfully for
+  product candidate `cd6c62279e9587f160417d8180c0880e564b0e13`.
 - Hosted CI covered full isolated tests, Slice 5 AI gate, Slice 6 catalog check,
   Slice 6 gate, migration upgrade, production build, Compose config, production
   images, and isolated production container smoke.
@@ -97,7 +112,9 @@ Final scope-stop for this report:
 
 - Candidate `a7fd63f042a86e093685ce0aa7df1673bf8d3372` was superseded.
 - Candidate `15f178a743afdff723aa13f51b6f836644ae4695` was superseded by
-  final candidate `4f0e6429eb252364873508f8aab27664e1e003f5`.
+  candidate `4f0e6429eb252364873508f8aab27664e1e003f5`.
+- Candidate `4f0e6429eb252364873508f8aab27664e1e003f5` was superseded by
+  latest candidate `cd6c62279e9587f160417d8180c0880e564b0e13`.
 - Hosted CI run `31354129570` failed in isolated production container smoke at
   QWeather fixture API cache equality.
 - Root cause: the smoke-only QWeather cache seed used fixed
@@ -135,15 +152,15 @@ Final scope-stop for this report:
 
 ## 4. Automated Results
 
-Hosted CI run `31363101325` is the authoritative remote execution record for
-candidate `4f0e6429eb252364873508f8aab27664e1e003f5`.
+Hosted CI run `31366428260`, job `93385691606`, is the authoritative remote
+execution record for candidate `cd6c62279e9587f160417d8180c0880e564b0e13`.
 
 | Gate | Evidence state |
 | --- | --- |
-| Hosted CI run `31363101325` | Success for head SHA `4f0e6429eb252364873508f8aab27664e1e003f5` |
+| Hosted CI run `31366428260`, job `93385691606` | Success for head SHA `cd6c62279e9587f160417d8180c0880e564b0e13` |
 | Server unit | Local exit 0, 20 files / 175 tests after final cache-expiry test |
 | Server integration | Local exit 0, 9 files / 135 tests |
-| H5 unit | Local exit 0, 20 files / 76 tests |
+| H5 unit | Local exit 0, 20 files / 78 tests |
 | Browser E2E | Isolated Playwright 16 / 16 tests; hosted full isolated gate also success |
 | Slice 5 AI gate | Local/hosted success |
 | Slice 6 catalog check | Hosted success; local catalog check success |
@@ -152,6 +169,7 @@ candidate `4f0e6429eb252364873508f8aab27664e1e003f5`.
 | Production build | Local and hosted success |
 | Production Compose config/images | Local and hosted success |
 | Production smoke | Local and hosted success with `APP_ENV=production` |
+| Exact hosted CI | Run `31366428260`, job `93385691606`, success |
 
 Final-candidate command evidence with exit 0, combining local focused reruns and
 the hosted exact-candidate full gate:
@@ -280,7 +298,7 @@ Production smoke proves:
 
 | AC | Implementation | Exact test/assertion | Result |
 | --- | --- | --- | --- |
-| S6-AC-01 | Baseline guard and scope-limited Slice 6 files | Report records Slice 5 baseline `5b91de6af0194fdb437fb858834fd5d7c47833d4`, freeze docs `f00f08cb680e2c5e0238aae758aee11cc206e747`, product SHA `4f0e6429eb252364873508f8aab27664e1e003f5`; no cross-slice fact expansion | Covered; pending external audit |
+| S6-AC-01 | Baseline guard and scope-limited Slice 6 files | Report records Slice 5 baseline `5b91de6af0194fdb437fb858834fd5d7c47833d4`, freeze docs `f00f08cb680e2c5e0238aae758aee11cc206e747`, product SHA `cd6c62279e9587f160417d8180c0880e564b0e13`; no cross-slice fact expansion | Covered; pending external audit |
 | S6-AC-02 | Region schema, catalog data, import/check scripts, Docker packaging | `catalog:check`, Slice6 gate catalog invariants, hosted catalog check; hashes and counts above | Covered; pending external audit |
 | S6-AC-03 | `/api/location/regions`, `/api/location/popular-cities` | Slice6 HTTP tests assert exact public shape, municipality no fake city, no internal legacy/data/source leak | Covered; pending external audit |
 | S6-AC-04 | Location resolver and mock/off/provider failure behavior | Resolver specs and Slice6 HTTP tests assert district resolution, null failure path, no raw provider payload or precise coordinates | Covered; pending external audit |
@@ -299,7 +317,7 @@ Production smoke proves:
 | S6-AC-17 | Runtime configuration | Runtime config tests assert production constraints, off/http/mock behavior, dedicated QWeather host compatibility | Covered; pending external audit |
 | S6-AC-18 | Migration contract | Migration upgrade gate covers fresh/S2/S4/exact S5 baseline/second deploy and catalog import idempotence | Covered; pending external audit |
 | S6-AC-19 | Automated test gate | Hosted CI steps include full isolated test, Slice5 AI gate, Slice6 catalog check, Slice6 gate, migration, build, production smoke | Covered; pending external audit |
-| S6-AC-20 | Production smoke and delivery evidence | This report plus production smoke evidence above; run `31363101325` success for exact product candidate `4f0e6429eb252364873508f8aab27664e1e003f5` | Covered; pending external audit |
+| S6-AC-20 | Production smoke and delivery evidence | This report plus production smoke evidence above; run `31366428260`, job `93385691606`, success for exact product candidate `cd6c62279e9587f160417d8180c0880e564b0e13` | Covered; pending external audit |
 
 ## 8. H5 and Visual QA
 
@@ -308,11 +326,21 @@ Production smoke proves:
   TerraceWizard auto-next.
 - H5 unit coverage includes browser location success, denied, insecure context,
   timeout, resolve-null, ordered attribution source display, and exact warning
-  order.
+  order; final H5 IA closure totals 20 files / 78 tests.
+- Home IA closure removes the duplicate centered `PageHeader`, promotes the
+  complete canonical district as the top entry point, uses compact paired
+  weather/today-calendar summaries, and moves the recommendation first row
+  earlier.
 - Visual QA was performed at 320px, 375px, 390px, 414px, and 480px for the
   final H5 IA closure surfaces; the 375px check recorded `clientWidth=375`,
   `scrollWidth=375`, `cards=3`, and `console errors=[]`. No blocking overlap,
-  inaccessible tab flow, or unreadable attribution was recorded.
+  inaccessible tab flow, unreadable attribution, horizontal overflow, or console
+  errors was recorded. Home recommendation cards render as two columns at 320px
+  and three columns at 375px, 390px, and 414px.
+- Unknown weather and season states fail neutral; the frontend does not select
+  sunlight facts from `environmentRequirement`. Frozen
+  `available_start_methods` labels and crop-wide catalog harvest display remain
+  preserved.
 
 ## 9. Known Nonblocking Warnings
 
@@ -327,4 +355,4 @@ Production smoke proves:
 
 Review code and behavior at exactly:
 
-**`4f0e6429eb252364873508f8aab27664e1e003f5`**
+**`cd6c62279e9587f160417d8180c0880e564b0e13`**
