@@ -8,23 +8,87 @@
 > Slice 6 freeze docs commit:
 > `f00f08cb680e2c5e0238aae758aee11cc206e747`
 > Slice 6 product candidate:
-> `15f178a743afdff723aa13f51b6f836644ae4695`
+> `4f0e6429eb252364873508f8aab27664e1e003f5`
 > PR: `#2`
-> Hosted CI: **SUCCESS**, run `31355032580`, job `93353024921`, head SHA
-> `15f178a743afdff723aa13f51b6f836644ae4695`
+> Hosted CI: **SUCCESS**, run `31363101325`, head SHA
+> `4f0e6429eb252364873508f8aab27664e1e003f5`
 
 This report records implementation and execution evidence for the exact Slice 6
 product candidate above. It does not declare Slice 6 PASS/FROZEN; external audit
 remains pending. It does not contain provider keys, JWTs, database URLs, raw
 secrets, or raw user-private location coordinates.
 
+## Final Superseding Candidate - Docs-Only Update
+
+This section supersedes all earlier candidate references in the historical
+sections below. The only current Slice 6 product candidate is:
+
+**`4f0e6429eb252364873508f8aab27664e1e003f5`**
+
+Hosted CI run `31363101325` completed with **SUCCESS** for this candidate.
+This is not a Claude PASS/FROZEN declaration; external Claude audit remains a
+separate acceptance signal.
+
+Final recorded gates for candidate
+`4f0e6429eb252364873508f8aab27664e1e003f5`:
+
+| Gate | Result |
+| --- | --- |
+| Full isolated test | PASS |
+| Slice 5 AI gate | PASS |
+| Slice 6 catalog check and Slice 6 gate | PASS |
+| Migration upgrade | PASS |
+| Production build | PASS |
+| Production Compose config | PASS |
+| Production image build | PASS |
+| Production smoke | PASS |
+
+H5 IA closure recorded for this final candidate:
+
+- Unified long-term plant flow uses the canonical path sequence
+  `/perennial` -> `/perennial/:plantId` -> `/perennial/:plantId/plan` ->
+  `/planting-start`.
+- Legacy `/plan/:cropId`, `/crops/:id`, and `/seasons/now` compatibility is
+  retained only for frozen compatibility.
+- Long-term plant listing consumes existing catalog API data, uses a reusable
+  neutral `PlantCard`, and does not hardcode blueberry/grape entries.
+- Unified `CropDetail.vue` remains the single detail container and composes
+  shared plant sections. Missing knowledge fields are hidden.
+- `PerennialPlan.vue` continues to use existing recommendation/soil endpoints
+  without adding unsupported location fields. Route query location is used only
+  for navigation continuity; displayed recommendation context comes from the
+  authenticated TerraceProfile returned by `/terraces/mine`.
+- Direct plan access without a TerraceProfile now shows an actionable create
+  profile recovery state and links to `/terrace` with `target_crop_id`,
+  `variety_id`, `admin_code`, and existing canonical `city_code`, allowing
+  return to the canonical plan path.
+- Plant card/detail image regions use server `coverImage` when present and a
+  stable neutral placeholder when absent.
+- H5 component/unit result: 20 files / 76 tests passed.
+- Isolated Playwright result: 16 / 16 tests passed.
+- Screenshot/overflow QA passed at 320px, 375px, 390px, 414px, and 480px.
+  The 375px check recorded `clientWidth=375`, `scrollWidth=375`, `cards=3`,
+  and `console errors=[]`.
+- LAN URL used only for development validation:
+  `http://192.168.3.150:5176/`.
+
+Final scope-stop for this report:
+
+- No Server, Prisma, or agriculture fact changes are included in this docs-only
+  report update.
+- No QWeather display expansion beyond the frozen Slice 6 display/weather
+  contracts is introduced here.
+- Legacy `/seasons/now` remains for frozen compatibility.
+- Long-term A/B experimentation, catalog expansion, ecommerce flows, and soil
+  engine/recommendation refactors were not brought into Slice 6.
+
 ## 0. External Audit State
 
 - Independent implementation and gate review result before external audit:
   Blocking = 0.
-- Hosted CI run `31355032580`, job `93353024921`, completed successfully for
-  product candidate `15f178a743afdff723aa13f51b6f836644ae4695`.
-- Hosted CI covered full isolated tests, Slice 5 gate, Slice 6 catalog check,
+- Hosted CI run `31363101325` completed successfully for product candidate
+  `4f0e6429eb252364873508f8aab27664e1e003f5`.
+- Hosted CI covered full isolated tests, Slice 5 AI gate, Slice 6 catalog check,
   Slice 6 gate, migration upgrade, production build, Compose config, production
   images, and isolated production container smoke.
 - External Claude audit remains the remaining acceptance signal.
@@ -32,6 +96,8 @@ secrets, or raw user-private location coordinates.
 ## 1. Superseded Candidate History
 
 - Candidate `a7fd63f042a86e093685ce0aa7df1673bf8d3372` was superseded.
+- Candidate `15f178a743afdff723aa13f51b6f836644ae4695` was superseded by
+  final candidate `4f0e6429eb252364873508f8aab27664e1e003f5`.
 - Hosted CI run `31354129570` failed in isolated production container smoke at
   QWeather fixture API cache equality.
 - Root cause: the smoke-only QWeather cache seed used fixed
@@ -69,17 +135,17 @@ secrets, or raw user-private location coordinates.
 
 ## 4. Automated Results
 
-Hosted CI run `31355032580` is the authoritative remote execution record for
-candidate `15f178a743afdff723aa13f51b6f836644ae4695`.
+Hosted CI run `31363101325` is the authoritative remote execution record for
+candidate `4f0e6429eb252364873508f8aab27664e1e003f5`.
 
 | Gate | Evidence state |
 | --- | --- |
-| Hosted CI run `31355032580`, job `93353024921` | Success for head SHA `15f178a743afdff723aa13f51b6f836644ae4695` |
+| Hosted CI run `31363101325` | Success for head SHA `4f0e6429eb252364873508f8aab27664e1e003f5` |
 | Server unit | Local exit 0, 20 files / 175 tests after final cache-expiry test |
 | Server integration | Local exit 0, 9 files / 135 tests |
-| H5 unit | Local exit 0, 14 files / 54 tests |
-| Browser E2E | Local exit 0, 15 / 15 tests; hosted full isolated gate also success |
-| Slice 5 gate | Local exit 0, 7 files / 98 tests; hosted success |
+| H5 unit | Local exit 0, 20 files / 76 tests |
+| Browser E2E | Isolated Playwright 16 / 16 tests; hosted full isolated gate also success |
+| Slice 5 AI gate | Local/hosted success |
 | Slice 6 catalog check | Hosted success; local catalog check success |
 | Slice 6 gate | Local exit 0, 13 files / 110 tests after final cache-expiry test; hosted success |
 | Migration upgrade | Local and hosted success: fresh DB, Slice 2 DB, Slice 4 DB, exact Slice 5 baseline DB, second deploy idempotence |
@@ -214,7 +280,7 @@ Production smoke proves:
 
 | AC | Implementation | Exact test/assertion | Result |
 | --- | --- | --- | --- |
-| S6-AC-01 | Baseline guard and scope-limited Slice 6 files | Report records Slice 5 baseline `5b91de6af0194fdb437fb858834fd5d7c47833d4`, freeze docs `f00f08cb680e2c5e0238aae758aee11cc206e747`, product SHA `15f178a743afdff723aa13f51b6f836644ae4695`; no cross-slice fact expansion | Covered; pending external audit |
+| S6-AC-01 | Baseline guard and scope-limited Slice 6 files | Report records Slice 5 baseline `5b91de6af0194fdb437fb858834fd5d7c47833d4`, freeze docs `f00f08cb680e2c5e0238aae758aee11cc206e747`, product SHA `4f0e6429eb252364873508f8aab27664e1e003f5`; no cross-slice fact expansion | Covered; pending external audit |
 | S6-AC-02 | Region schema, catalog data, import/check scripts, Docker packaging | `catalog:check`, Slice6 gate catalog invariants, hosted catalog check; hashes and counts above | Covered; pending external audit |
 | S6-AC-03 | `/api/location/regions`, `/api/location/popular-cities` | Slice6 HTTP tests assert exact public shape, municipality no fake city, no internal legacy/data/source leak | Covered; pending external audit |
 | S6-AC-04 | Location resolver and mock/off/provider failure behavior | Resolver specs and Slice6 HTTP tests assert district resolution, null failure path, no raw provider payload or precise coordinates | Covered; pending external audit |
@@ -232,8 +298,8 @@ Production smoke proves:
 | S6-AC-16 | Failure/degradation matrix | Unit/browser/smoke assert provider off, geolocation denied/insecure/timeout/null, unsupported district, malformed warning refer | Covered; pending external audit |
 | S6-AC-17 | Runtime configuration | Runtime config tests assert production constraints, off/http/mock behavior, dedicated QWeather host compatibility | Covered; pending external audit |
 | S6-AC-18 | Migration contract | Migration upgrade gate covers fresh/S2/S4/exact S5 baseline/second deploy and catalog import idempotence | Covered; pending external audit |
-| S6-AC-19 | Automated test gate | Hosted CI steps include full isolated test, Slice5 gate, Slice6 catalog check, Slice6 gate, migration, build, production smoke | Covered; pending external audit |
-| S6-AC-20 | Production smoke and delivery evidence | This report plus production smoke evidence above; run `31355032580` success for exact product candidate | Covered; pending external audit |
+| S6-AC-19 | Automated test gate | Hosted CI steps include full isolated test, Slice5 AI gate, Slice6 catalog check, Slice6 gate, migration, build, production smoke | Covered; pending external audit |
+| S6-AC-20 | Production smoke and delivery evidence | This report plus production smoke evidence above; run `31363101325` success for exact product candidate `4f0e6429eb252364873508f8aab27664e1e003f5` | Covered; pending external audit |
 
 ## 8. H5 and Visual QA
 
@@ -243,9 +309,10 @@ Production smoke proves:
 - H5 unit coverage includes browser location success, denied, insecure context,
   timeout, resolve-null, ordered attribution source display, and exact warning
   order.
-- Visual QA was performed at 390px and 1440px viewports for the Slice 6 H5
-  surfaces; no blocking overlap, inaccessible tab flow, or unreadable QWeather
-  attribution was recorded.
+- Visual QA was performed at 320px, 375px, 390px, 414px, and 480px for the
+  final H5 IA closure surfaces; the 375px check recorded `clientWidth=375`,
+  `scrollWidth=375`, `cards=3`, and `console errors=[]`. No blocking overlap,
+  inaccessible tab flow, or unreadable attribution was recorded.
 
 ## 9. Known Nonblocking Warnings
 
@@ -260,4 +327,4 @@ Production smoke proves:
 
 Review code and behavior at exactly:
 
-**`15f178a743afdff723aa13f51b6f836644ae4695`**
+**`4f0e6429eb252364873508f8aab27664e1e003f5`**
