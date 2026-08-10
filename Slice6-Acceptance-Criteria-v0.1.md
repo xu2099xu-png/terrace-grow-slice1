@@ -204,7 +204,7 @@ shasum -a 256 package/lunar.js package/package.json
 
 Shared rules for all QWeather HTTP interfaces:
 
-- documentation snapshot date is `2026-08-09`;
+- documentation snapshot date is `2026-08-10`;
 - request host is the account-specific dedicated API Host from QWeather
   configuration, not legacy shared hosts such as `api.qweather.com`,
   `devapi.qweather.com`, or `geoapi.qweather.com`;
@@ -215,9 +215,28 @@ Shared rules for all QWeather HTTP interfaces:
 - provider failure, timeout, malformed response, unsupported location, quota
   exhaustion, or auth failure returns weather `unavailable`, not a retry against
   `climate_area_code`, city, legacy `city_code`, or a representative district;
-- `metadata.attributions[]` is the current v1 attribution path and is preserved
-  in order; weather-warning `alerts[].senderName` values are preserved as
-  warning source names without rewriting;
+- `metadata.attributions[]` is the documented current v1 attribution path and
+  is preserved in order; weather-warning `alerts[].senderName` values are
+  preserved as warning source names without rewriting;
+- weather-warning normal v1 responses that omit `refer` are valid and must not
+  error or invent sources; if an actual response includes `refer.sources`, that
+  property is a frozen optional Attribution Terms compatibility path, not a
+  documented required Weather Alert v1 schema path;
+- weather-warning `refer.sources`, when present, must validate as a string
+  array and be passed through in original array order and exact text content to
+  public `attribution.sources`, weather cache, and visible H5 source display;
+  do not trim, translate, rewrite, or deduplicate it. UI text-content escaping
+  for safe rendering is not considered text modification;
+- weather-warning public source order is flat and fixed:
+  `metadata.attributions[]` original order, then non-null
+  `alerts[].senderName` values in `alerts[]` order, then `refer.sources[]`
+  original order; no cross-group deduplication is allowed;
+- if a weather-warning response has a `refer.sources` property that is not a
+  string array, including a non-array value or any non-string item, fail closed
+  for the warning display branch: return warning display unavailable and do not
+  cache that warning or attribution. Current weather, daily forecast, and
+  seasonal content remain usable. An empty `refer.sources` array is valid and
+  requires no additional visible source;
 - numeric provider ratios consumed from `humidity` and precipitation
   `probability` paths are valid only when finite and within `[0, 1]`; public
   `humidity_percent` and `precipitation_probability_percent` are computed as
@@ -234,7 +253,26 @@ Shared rules for all QWeather HTTP interfaces:
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Display current weather | `GET /weather/v1/current/{latitude}/{longitude}` | `https://dev.qweather.com/en/docs/api/weather/weather-current/` | `metadata.tag`, `condition.text`, `condition.code`, `temperature.value`, `temperature.unit`, `humidity`, `wind.direction.compass`, `wind.direction.degree`, `wind.speed.value`, `wind.speed.unit`, `wind.scale`, `precipitation.amount.value`, `precipitation.amount.unit`, `precipitation.intensity.value`, `precipitation.intensity.unit`, `precipitation.type` | `metadata.attributions[]` | `qweather-current-v1-display.fixture.json` | `b33eb93a7e52ebdfdca0a55d10fe6d8b7b7b2b93c89a05c65b904c3d5ebab3bd` | `qweather-current-v1-display-parser@1` |
 | Agricultural/display daily forecast | `GET /weather/v1/daily/{latitude}/{longitude}` with `days=3` for agricultural conversion | `https://dev.qweather.com/en/docs/api/weather/weather-daily-forecast/` | `metadata.tag`, `days[].forecastStartTime`, `days[].forecastEndTime`, `days[].temperatureMin.value`, `days[].temperatureMin.unit`, `days[].temperatureMax.value`, `days[].temperatureMax.unit`, `days[0].daytime.condition.text`, `days[0].daytime.condition.code`, `days[0].daytime.precipitation.amount.value`, `days[0].daytime.precipitation.amount.unit`, `days[0].daytime.precipitation.probability`, `days[0].daytime.precipitation.type`, `days[0].daytime.humidity`, `days[0].daytime.wind.direction.compass`, `days[0].daytime.wind.speed.value`, `days[0].daytime.wind.speed.unit`, `days[0].daytime.wind.scale` | `metadata.attributions[]`; frost is always internal `unknown` because QWeather daily v1 provides no explicit frost fact consumed by Slice 6 | `qweather-daily-v1-agri-display.fixture.json` | `6d513171fa80d53565317cb4e4ac52077b5b7b4c5447c38d764bfe1d96ca915d` | `qweather-daily-v1-agri-display-parser@1` |
-| Display weather warning | `GET /weatheralert/v1/current/{latitude}/{longitude}` | `https://dev.qweather.com/en/docs/api/warning/weather-alert/` | `metadata.tag`, `metadata.zeroResult`, `alerts[].id`, `alerts[].senderName`, `alerts[].issuedTime`, `alerts[].eventType.name`, `alerts[].eventType.code`, `alerts[].severity`, `alerts[].certainty`, `alerts[].color.code`, `alerts[].effectiveTime`, `alerts[].onsetTime`, `alerts[].expireTime`, `alerts[].headline`, `alerts[].description` | `metadata.attributions[]`, `alerts[].senderName` | `qweather-weatheralert-v1-display.fixture.json` | `ad76821d0dcc423e84e530ac7c3dd3c865d685ba093db165cb386dbd68c15b2c` | `qweather-weatheralert-v1-display-parser@1` |
+| Display weather warning - normal v1 schema | `GET /weatheralert/v1/current/{latitude}/{longitude}` | `https://dev.qweather.com/en/docs/api/warning/weather-alert/` | `metadata.tag`, `metadata.zeroResult`, `alerts[].id`, `alerts[].senderName`, `alerts[].issuedTime`, `alerts[].eventType.name`, `alerts[].eventType.code`, `alerts[].severity`, `alerts[].certainty`, `alerts[].color.code`, `alerts[].effectiveTime`, `alerts[].onsetTime`, `alerts[].expireTime`, `alerts[].headline`, `alerts[].description` | Documented normal paths: `metadata.attributions[]`, `alerts[].senderName`; `refer` may be absent and must not be invented | `qweather-weatheralert-v1-display.fixture.json` | `ad76821d0dcc423e84e530ac7c3dd3c865d685ba093db165cb386dbd68c15b2c` | `qweather-weatheralert-v1-display-parser@2` |
+| Display weather warning - optional terms compatibility | `GET /weatheralert/v1/current/{latitude}/{longitude}` | `https://dev.qweather.com/en/docs/api/warning/weather-alert/`; `https://dev.qweather.com/en/docs/terms/attribution/`; `https://dev.qweather.com/docs/terms/attribution/` | Same normal v1 weather-warning paths as above; optional compatibility validation of `refer.sources` only when that property is present | Normal paths plus optional terms-compat path `refer.sources[]`; this is not a Weather Alert v1 schema-required path | `qweather-weatheralert-v1-refer-compat.fixture.json` | `353199da0154ab87096587fbd64dea6486b2ccced59552d3a27edf181e48a2f6` | `qweather-weatheralert-v1-display-parser@2` |
+
+Weather-warning official documentation conflict manifest:
+
+```json
+{
+  "type": "official_documentation_conflict",
+  "interface": "qweather-weatheralert-v1-current",
+  "snapshot_date": "2026-08-10",
+  "schema_url": "https://dev.qweather.com/en/docs/api/warning/weather-alert/",
+  "attribution_terms_urls": [
+    "https://dev.qweather.com/en/docs/terms/attribution/",
+    "https://dev.qweather.com/docs/terms/attribution/"
+  ],
+  "schema_observation": "Weather Alert v1 response/schema documents metadata.attributions[] and alerts[].senderName for attribution/source display and does not list refer.",
+  "terms_observation": "QWeather Attribution Terms for Weather Warning require displaying all refer.sources content without modification.",
+  "resolution_rule": "Treat metadata.attributions[] and alerts[].senderName as documented normal Weather Alert v1 paths. Accept normal responses with missing refer. If an actual response includes refer.sources, validate it as string[] and pass it through exactly after metadata.attributions[] and alerts[].senderName. If refer.sources is present but malformed, fail closed for warning display and do not cache that warning/attribution. Never invent refer.sources."
+}
+```
 
 Canonical fixture checksums are computed from minified UTF-8 JSON with
 `JSON.stringify(fixtureObject)` and no trailing newline. The implementation must
@@ -253,6 +291,10 @@ Canonical QWeather fixture bodies:
 
 ```json
 {"metadata":{"tag":"s6-weatheralert-v1-fixture","zeroResult":false,"attributions":["https://developer.qweather.com/attribution.html","Alert data may be delayed or out of date. Refer to official sources for the latest data."]},"alerts":[{"id":"202608090001","senderName":"杭州市气象台","issuedTime":"2026-08-09T10:00+08:00","eventType":{"name":"暴雨","code":"1003"},"severity":"moderate","certainty":"likely","color":{"code":"blue","red":30,"green":50,"blue":205,"alpha":1},"effectiveTime":"2026-08-09T10:00+08:00","onsetTime":"2026-08-09T11:00+08:00","expireTime":"2026-08-09T20:00+08:00","headline":"杭州市气象台发布暴雨蓝色预警","description":"预计今天局部有短时强降雨。"}]}
+```
+
+```json
+{"metadata":{"tag":"s6-weatheralert-v1-compat-refer-fixture","zeroResult":false,"attributions":["https://developer.qweather.com/attribution.html","Alert data may be delayed or out of date. Refer to official sources for the latest data."]},"refer":{"sources":["国家预警信息发布中心","中国天气网"]},"alerts":[{"id":"202608090001","senderName":"杭州市气象台","issuedTime":"2026-08-09T10:00+08:00","eventType":{"name":"暴雨","code":"1003"},"severity":"moderate","certainty":"likely","color":{"code":"blue","red":30,"green":50,"blue":205,"alpha":1},"effectiveTime":"2026-08-09T10:00+08:00","onsetTime":"2026-08-09T11:00+08:00","expireTime":"2026-08-09T20:00+08:00","headline":"杭州市气象台发布暴雨蓝色预警","description":"预计今天局部有短时强降雨。"}]}
 ```
 
 ## 1. Product Contract
@@ -925,6 +967,13 @@ Rules:
 - For HTTP QWeather, provider `metadata.attributions[]` and weather-warning
   `alerts[].senderName` source names must be passed through and displayed
   completely without rewriting.
+- For HTTP QWeather weather warnings, missing `refer` in the normal fixture or
+  normal provider response succeeds. If `refer.sources` exists, it is validated
+  as a string array and appended to public `attribution.sources` after
+  `metadata.attributions[]` and non-null `alerts[].senderName` values, preserving
+  exact text and original order with no cross-group dedupe. Malformed present
+  `refer.sources` fails closed for warning display and prevents caching that
+  warning/attribution; it must not be silently dropped while displaying warning.
 - For `off` and `mock`, attribution uses the contract-defined null/static values
   and must not pretend to be a real external provider.
 - Weather summary is display-only unless transformed into the existing frozen
@@ -962,8 +1011,11 @@ coordinates beyond catalog centroids, JWTs, user identifiers, or Authorization
 headers.
 
 Weather cache rows must preserve parsed attribution data, including QWeather
-`metadata.attributions[]` and weather-warning `alerts[].senderName` source
-names, so cache hits display the same visible attribution as provider responses.
+`metadata.attributions[]`, weather-warning `alerts[].senderName` source names,
+and valid optional weather-warning `refer.sources[]` compatibility sources, so
+cache hits display the same visible attribution as provider responses. A
+malformed present `refer.sources` property forbids caching that warning or
+attribution.
 
 TTL rules:
 
@@ -1202,13 +1254,17 @@ Final Slice 6 gate must include automated coverage for:
   fallback;
 - visible QWeather attribution showing `和风天气/QWeather`,
   `https://www.qweather.com`, complete provider `metadata.attributions[]`,
-  complete weather-warning source names, and no fake external attribution for
+  complete weather-warning source names, valid optional `refer.sources[]`
+  compatibility sources when present, and no fake external attribution for
   off/mock;
 - QWeather provider-contract manifest is a Freeze Gate. For each Slice 6
   current, daily, and warning interface it must freeze the official supported
   endpoint path and version, official documentation URL, documentation snapshot
   date, auth header and host, exact consumed JSON paths, attribution JSON paths,
-  fixture checksum, and parser version. Tests must fail on undocumented parser
+  fixture checksum, and parser version. The warning interface must also freeze
+  the `official_documentation_conflict` manifest and the optional
+  `refer.sources[]` terms-compatibility fixture without treating `refer` as a
+  Weather Alert v1 schema-required path. Tests must fail on undocumented parser
   paths. Any `TBD` in this manifest forbids Freeze and implementation.
 - Existing Slice 3 agricultural Daily Forecast v1 must not regress or be
   replaced by a v7 daily schema: it remains
@@ -1223,8 +1279,24 @@ Final Slice 6 gate must include automated coverage for:
   exactly `和风天气/QWeather` and `href` exactly `https://www.qweather.com`;
 - QWeather `metadata.attributions[]` array order and content are preserved
   without rewriting; weather-warning `alerts[].senderName` source names are
-  displayed completely; cache hits display the same attribution; `off` and
-  `mock` modes do not display or return QWeather attribution;
+  displayed completely; weather-warning `refer.sources[]`, when present and
+  valid, is visible in original order and exact text after metadata and sender
+  sources; cache hits display the same attribution; `off` and `mock` modes do
+  not display or return QWeather attribution;
+- QWeather warning compatibility tests must prove: the normal
+  `qweather-weatheralert-v1-display.fixture.json` body without `refer` succeeds
+  and keeps SHA-256
+  `ad76821d0dcc423e84e530ac7c3dd3c865d685ba093db165cb386dbd68c15b2c`; the
+  `qweather-weatheralert-v1-refer-compat.fixture.json` body hashes to
+  `353199da0154ab87096587fbd64dea6486b2ccced59552d3a27edf181e48a2f6` using
+  parser `qweather-weatheralert-v1-display-parser@2`; output
+  `attribution.sources` ordering exactly equals the two `metadata.attributions[]`
+  strings, then `杭州市气象台`, then `国家预警信息发布中心`, then `中国天气网`;
+  both `refer.sources[]` values are visible in H5 and cache-hit output in exact
+  original order; malformed present `refer.sources` fails closed for warning
+  display and is not cached; no `refer` is invented for normal responses; parser
+  tests assert the warning parser consumes no paths outside the manifest normal
+  and compatibility path lists.
 - TerraceWizard active selection auto-next and prefill no auto-next;
 - legacy cityCode migration for all 17 legacy values with
   Beijing/Tianjin/Shanghai mapped to municipality canonical codes, all other
@@ -1262,7 +1334,8 @@ Smoke must prove:
   requiring real keys;
 - QWeather HTTP fixture path visibly displays the required anchor, exact href,
   complete ordered `metadata.attributions[]`, complete weather-warning source
-  names, and equivalent attribution on cache hit;
+  names, valid optional `refer.sources[]` compatibility sources in original
+  order, and equivalent attribution on cache hit;
 - weather unavailable does not make the app unusable;
 - no draft agricultural facts are exposed.
 
@@ -1277,6 +1350,9 @@ The Slice 6 Delivery Report must include:
   and warning interface, including fixture checksums,
 - QWeather attribution evidence against
   `https://dev.qweather.com/docs/terms/attribution/`,
+  including the Weather Warning `refer.sources[]` compatibility fixture,
+  fail-closed malformed-present behavior, no-invented-`refer` normal response,
+  cache-hit equality, and visible H5 source evidence,
 - region dataset manifest with exact source owner, source URL, license or usage
   basis, snapshot date, source version, import date, row counts, checksums,
   canonical code standard, representative-point source manifest, and code

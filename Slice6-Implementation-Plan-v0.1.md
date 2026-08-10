@@ -237,8 +237,9 @@ Authorization headers, or precise user coordinates. Catalog centroids may be use
 for lookup but should not be duplicated beyond the parsed cache fields unless the
 AC explicitly allows it. `attribution` is stored only after validation and must
 preserve the exact public attribution data used by H5, including QWeather
-`metadata.attributions[]` and weather-warning `alerts[].senderName` source
-names.
+`metadata.attributions[]`, weather-warning `alerts[].senderName` source names,
+and valid optional weather-warning `refer.sources[]` compatibility sources.
+Malformed present `refer.sources` forbids caching that warning or attribution.
 
 ### 4.5 Calendar Cache
 
@@ -551,6 +552,17 @@ Attribution rules:
 - QWeather `metadata.attributions[]` and weather-warning
   `alerts[].senderName` source names are passed through completely and without
   rewriting in `attribution.sources`.
+- Weather Alert v1 normal responses may omit `refer`; that succeeds and the
+  adapter must not invent `refer.sources`. If an actual warning response has
+  `refer.sources`, validate it as a string array and append it to
+  `attribution.sources` after `metadata.attributions[]` and non-null
+  `alerts[].senderName` values, preserving original array order and exact text
+  content with no trimming, translation, rewriting, or cross-group dedupe. UI
+  text-content escaping for safe H5 rendering is allowed. If `refer.sources` is
+  present but is not a string array, including any non-string item, fail closed
+  for warning display and do not cache that warning/attribution; current
+  weather, daily forecast, and seasonal content remain usable. Empty
+  `refer.sources: []` is valid and adds no visible source.
 - QWeather ratio fields used for public percentages are accepted only as finite
   `[0, 1]` numbers and converted with `Math.round(ratio * 100)`. Missing,
   non-finite, or out-of-range values stay `null`; adapters must not default
@@ -581,17 +593,30 @@ The QWeather provider-contract manifest is frozen in AC section 0.3 for:
   fixture SHA-256
   `6d513171fa80d53565317cb4e4ac52077b5b7b4c5447c38d764bfe1d96ca915d`,
   parser `qweather-daily-v1-agri-display-parser@1`;
-- display warning: `GET /weatheralert/v1/current/{latitude}/{longitude}`,
+- display warning normal v1 schema:
+  `GET /weatheralert/v1/current/{latitude}/{longitude}`,
   fixture SHA-256
   `ad76821d0dcc423e84e530ac7c3dd3c865d685ba093db165cb386dbd68c15b2c`,
-  parser `qweather-weatheralert-v1-display-parser@1`.
+  parser `qweather-weatheralert-v1-display-parser@2`;
+- display warning optional terms compatibility:
+  `GET /weatheralert/v1/current/{latitude}/{longitude}`,
+  fixture `qweather-weatheralert-v1-refer-compat.fixture.json`, fixture SHA-256
+  `353199da0154ab87096587fbd64dea6486b2ccced59552d3a27edf181e48a2f6`,
+  parser `qweather-weatheralert-v1-display-parser@2`, and optional
+  `refer.sources[]` validation/pass-through only when the property is present.
 
 Implementation must consume the exact official endpoint paths, official
 documentation URLs, documentation snapshot date, `X-QW-Api-Key` auth header,
 dedicated QWeather API Host contract, `{latitude}/{longitude}` coordinate order,
 consumed JSON paths, attribution paths, fixture checksums, and parser versions
 from AC section 0.3. Parser tests must reject undocumented JSON paths outside
-the frozen consumed and attribution path lists.
+the frozen consumed and attribution path lists. For Weather Alert v1, the
+implementation must carry the AC `official_documentation_conflict` manifest:
+the schema URL documents `metadata.attributions[]` and `alerts[].senderName`
+without listing `refer`, while the QWeather Attribution Terms require Weather
+Warning `refer.sources` display. The resolution is normal missing-`refer`
+success, optional present-`refer.sources` exact pass-through, malformed-present
+fail-closed warning display, and no invented `refer`.
 
 The Daily Forecast v1 entry pins
 `/weather/v1/daily/{latitude}/{longitude}`, dedicated host, `X-QW-Api-Key`,
@@ -601,7 +626,8 @@ The Daily Forecast v1 entry pins
 The attribution gate remains mandatory for display current/warning and cache-hit
 paths. Moving daily forecast back to the frozen Slice 3 contract must not weaken
 visible QWeather name/link, ordered `metadata.attributions[]`, warning source
-names, cache equality, or off/mock non-impersonation assertions.
+names, valid optional `refer.sources[]` compatibility display, cache equality,
+or off/mock non-impersonation assertions.
 
 ## 7. Nearest Proxy Algorithm
 
@@ -825,8 +851,8 @@ Rules:
 | S6-AC-07 | Add `RegionClimateMapping`, `ClimateAnchor`, Haversine resolver; syntactically invalid admin codes are 400, well-formed unknown/disabled are 200 unsupported, enabled districts are direct/nearest_proxy only. | Pure function tests, catalog gate, direct/proxy/unsupported HTTP tests, invalid-admin-code validation tests, selected-different-from-climate fixture. |
 | S6-AC-08 | Add `/seasonal/home` with typed `selected_area_code`/`climate_area_code`/`proxy_used`, without `seasonal.city_code`; refactor SeasonsService internal assembly; no engine fork; legacy city_code stays only on `/seasons/now`. | HTTP exact-shape tests, direct same/false, nearest different/true, unsupported request/null/false tests, no-`seasonal.city_code` assertion, old `/seasons/now` exact compatibility tests. |
 | S6-AC-09 | Add server today context service using pinned local calendar artifact. | Golden vector tests, Asia/Shanghai 00:00 boundary tests, solar-term local-date conversion tests, no-network tests. |
-| S6-AC-10 | Add selected-district display weather provider/cache, exact attribution object, and daily adapter; no city/proxy weather fallback. | Available/partial/unavailable/cache tests, zero climate-proxy weather retry test, no defaulted fact assertions, QWeather exact fixture/visible href/source/warning tests, off/mock non-impersonation tests. |
-| S6-AC-11 | Add `WeatherCache` and `CalendarContextCache` with validated JSON and validated attribution only. | Cache hit/expired/corrupt/failure-preserves-valid-row tests, cached attribution equality tests, selected-district-only cache key tests. |
+| S6-AC-10 | Add selected-district display weather provider/cache, exact attribution object, daily adapter, and Weather Alert v1 `refer.sources[]` optional terms-compatibility handling; no city/proxy weather fallback. | Available/partial/unavailable/cache tests, zero climate-proxy weather retry test, no defaulted fact assertions, QWeather exact normal warning fixture missing-`refer` success, compat fixture source ordering/visibility, malformed-present fail-closed, no-invented-`refer`, off/mock non-impersonation tests. |
+| S6-AC-11 | Add `WeatherCache` and `CalendarContextCache` with validated JSON and validated attribution only, including valid optional warning `refer.sources[]`. | Cache hit/expired/corrupt/failure-preserves-valid-row tests, cached attribution equality tests including compat `refer.sources[]`, malformed-present no-cache tests, selected-district-only cache key tests. |
 | S6-AC-12 | Update App/router to `时令种植`/`长期种植`/`我的` tabs and compat routes. | H5 unit and Playwright tab/deep-link tests. |
 | S6-AC-13 | SeasonalHome loads aggregate payload without TerraceProfile. | Fresh identity E2E reaches recommendations or supported fallback without profile. |
 | S6-AC-14 | TerraceWizard uses RegionPicker; active select auto-next; prefill no auto-next. | Wizard component tests and targeted Playwright. |
@@ -834,8 +860,8 @@ Rules:
 | S6-AC-16 | Implement visible failure states across provider, cache, region API, calendar. | Matrix tests covering all table rows. |
 | S6-AC-17 | Extend RuntimeConfig with provider off/http/mock and startup validation. | Config positive/negative tests and production smoke. |
 | S6-AC-18 | Extend migration upgrade script for Slice5 baseline and 17 legacy city codes, distinguishing municipality province-level backfill from ordinary city/prefecture backfill. | Fresh/upgrade/idempotent migration gate and all-17 legacy mapping assertions. |
-| S6-AC-19 | Add full automated gate across server/H5/E2E/smoke. | CI matrix and AC-to-test evidence in delivery report. |
-| S6-AC-20 | Update production smoke and delivery report evidence requirements, including manifest completeness, QWeather attribution accessibility, calendar provenance, and scope-stop evidence. | `npm run test:production-smoke` plus hosted CI evidence. |
+| S6-AC-19 | Add full automated gate across server/H5/E2E/smoke, including Weather Alert v1 normal and optional `refer.sources[]` compatibility gates from AC 0.3. | CI matrix, normal/compat warning fixture hash/parser tests, source-order/cache/H5/fail-closed evidence, and AC-to-test evidence in delivery report. |
+| S6-AC-20 | Update production smoke and delivery report evidence requirements, including manifest completeness, QWeather attribution accessibility, Weather Warning `refer.sources[]` compatibility evidence, calendar provenance, and scope-stop evidence. | `npm run test:production-smoke` plus hosted CI evidence. |
 
 ## 12. Test Plan
 
@@ -873,6 +899,21 @@ Server unit tests:
   Freeze-time provider-contract manifest; this plan does not define those paths,
 - QWeather warning fixture uses the official v1 body pinned in AC section 0.3
   and preserves `alerts[].senderName` in attribution/display tests,
+- QWeather warning normal fixture without `refer` succeeds, keeps SHA-256
+  `ad76821d0dcc423e84e530ac7c3dd3c865d685ba093db165cb386dbd68c15b2c`, and
+  proves the parser does not invent `refer.sources`,
+- QWeather warning compatibility fixture
+  `qweather-weatheralert-v1-refer-compat.fixture.json` hashes to
+  `353199da0154ab87096587fbd64dea6486b2ccced59552d3a27edf181e48a2f6`, uses
+  parser `qweather-weatheralert-v1-display-parser@2`, and produces
+  `attribution.sources` exactly as metadata two strings, `杭州市气象台`,
+  `国家预警信息发布中心`, then `中国天气网`,
+- QWeather warning parser fail-closed tests cover present malformed
+  `refer.sources` as non-array and as arrays with any non-string item; these
+  cases make warning display unavailable and do not cache that
+  warning/attribution while current, daily, and seasonal paths remain usable,
+- QWeather warning parser path tests reject consumption outside the AC manifest
+  normal paths plus optional `refer.sources[]` compatibility path,
 - QWeather public `humidity_percent` and `precipitation_probability_percent`
   conversion tests cover valid 0..1 ratios, missing values, non-finite values,
   and out-of-range values,
@@ -934,6 +975,8 @@ H5 unit tests:
 - SeasonalHome secure-context/no-geolocation/picker/provider states,
 - SeasonalHome renders and exposes accessible QWeather attribution link with exact
   href when provided by the server,
+- SeasonalHome renders valid QWeather warning `refer.sources[]` compatibility
+  values as visible source text in original order when provided by the server,
 - three-tab active route and deep link,
 - TerraceWizard active auto-next vs prefill no auto-next,
 - localStorage privacy.
@@ -959,8 +1002,8 @@ Production smoke:
 - QWeather attribution is visible when HTTP fixture mode is exercised; provider
   `off` and `mock` do not pretend to be QWeather,
 - QWeather fixture smoke verifies exact visible link text, exact
-  `https://www.qweather.com` href, complete ordered sources, warnings, and cache
-  equality,
+  `https://www.qweather.com` href, complete ordered sources including valid
+  optional warning `refer.sources[]`, warnings, and cache equality,
 - selected-different-from-climate fixture proves provider/cache lookup uses
   selected district and performs zero climate proxy weather retries,
 - weather unavailable does not break seasonal usability,
@@ -1013,8 +1056,11 @@ The Slice 6 Delivery Report must include:
   parser versions,
 - weather attribution evidence against the referenced QWeather attribution page,
   including QWeather name/link, complete ordered `metadata.attributions[]`,
-  complete warning source names, exact accessible `https://www.qweather.com` href,
-  off/mock attribution behavior, and cache-hit attribution preservation,
+  complete warning source names, valid optional Weather Warning
+  `refer.sources[]` source values in original order, exact accessible
+  `https://www.qweather.com` href, malformed-present fail-closed behavior,
+  no-invented-`refer` normal response behavior, off/mock attribution behavior,
+  and cache-hit attribution preservation,
 - migration fresh/upgrade/idempotent evidence,
 - production smoke output,
 - explicit no-scope-drift statement:
